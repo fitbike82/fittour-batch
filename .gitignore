@@ -1,0 +1,38 @@
+# Credentials and private local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+# Runtime journals, provider responses and reports
+artifacts/
+logs/
+*.log
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.tmp
+*.bak
+.coverage
+htmlcov/
+.DS_Store
+Thumbs.db
+
+# Source reference material is retained locally, not published in this extraction.
+sql/
+supabase/
+docs/*
+!docs/migration-report.md

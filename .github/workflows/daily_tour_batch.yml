@@ -1,0 +1,60 @@
+name: Daily Tour enrichment
+
+on:
+  schedule:
+    - cron: '0 17,19,21 * * *' # UTC 17:00, 19:00, 21:00 = KST 02:00, 04:00, 06:00
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-tour-batch
+  cancel-in-progress: false
+
+jobs:
+  enrich:
+    # Do not duplicate the original repository's schedules during migration.
+    if: github.event_name == 'workflow_dispatch' || vars.BATCH_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      TOUR_API_DECODING_KEY: ${{ secrets.TOUR_API_DECODING_KEY }}
+      PYTHONUNBUFFERED: '1'
+      TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
+      TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: Install batch dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run offline checks
+        run: python -m unittest discover -s tests -v
+      - name: Restore resumable TourAPI page journal
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/tour-enrichment
+          key: ${{ runner.os }}-tour-enrichment-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ runner.os }}-tour-enrichment-
+      - name: Enrich missing endpoints with independent daily budgets
+        run: python scripts/sync_tour_enrichment_full.py --limit 10000 --endpoint-daily-limit 1000 --max-seconds 2700 --delay 0.2
+      - name: Save page journal even after partial/API failures
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/tour-enrichment
+          key: ${{ runner.os }}-tour-enrichment-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Upload batch outcome and provider responses
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tour-enrichment-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/tour-enrichment/last-run.json
+          if-no-files-found: ignore

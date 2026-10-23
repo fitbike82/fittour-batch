@@ -1,0 +1,33 @@
+name: Daily places universe sync
+on:
+  schedule:
+    - cron: '30 15 * * *' # UTC 15:30 = next day 00:30 KST
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: places-universe-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    # Do not duplicate the original repository's schedules during migration.
+    if: github.event_name == 'workflow_dispatch' || vars.BATCH_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TOUR_API_DECODING_KEY: ${{ secrets.TOUR_API_DECODING_KEY }}
+      PYTHONUNBUFFERED: '1'
+      TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
+      TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/sync_places_universe.py --area all --mode sync --batch-size 500

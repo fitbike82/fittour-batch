@@ -1,0 +1,59 @@
+name: Daily AI review summary batch
+on:
+  schedule:
+    # 20 runs per day, excluding KST 02:00-05:59 maintenance window (UTC 17-20).
+    - cron: '0 0-16,21-23 * * *'
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Maximum queued places (1-50); use 1 for first live validation'
+        type: choice
+        options: ['1', '5', '10', '50']
+        default: '1'
+permissions:
+  contents: read
+concurrency:
+  group: ai-summary-batch
+  cancel-in-progress: false
+jobs:
+  summarize:
+    # Do not duplicate the original repository's schedules during migration.
+    if: github.event_name == 'workflow_dispatch' || vars.BATCH_SCHEDULE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BATCH_LIMIT: ${{ inputs.limit || '50' }}
+      PYTHONUNBUFFERED: '1'
+      TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
+      TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - name: Run review batch checks
+        run: python -m unittest discover -s tests -p 'test*review*.py' -v
+      - name: Summarize a bounded batch of queued places
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            python scripts/batch_ai_summary_cron.py --limit 50
+          else
+            python scripts/batch_ai_summary_cron.py --limit "$BATCH_LIMIT"
+          fi
+      - name: Verify completed batch outcome
+        run: python scripts/verify_review_report.py
+      - name: Upload per-place review report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-review-report-${{ github.run_id }}
+          path: artifacts/ai-review-batch/report.json
+          if-no-files-found: warn
+          retention-days: 30
