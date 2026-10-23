@@ -15,4 +15,19 @@ Source: `fitbike82/local-trip-ai`; destination: `fitbike82/fittour-batch`.
 - Local python -m unittest: all original 120 tests passed.
 - Source file hashes and Git status are compared against a pre-copy snapshot. The pre-existing source change to .env.example is preserved.
 
-Remote run links and final status will be recorded after first deployment.
+## Deployment status
+
+Local preparation is complete; the initial remote push has not succeeded yet.
+
+- Initial application commit: b6c42ad.
+- Local original suite: 120 tests passed in 6.295 seconds.
+- Python compileall for scripts: passed.
+- Source verification: all 180 tracked source-file hashes and the initial Git status match the pre-copy snapshot. All 11 original implementation files and 15 original test/discovery files match their copies locally.
+- Credential scan: passed; populated environment files and private source-reference materials are not tracked.
+- Public payload: 49 explicitly staged batch-code, test, configuration and newly authored documentation files. Raw datasets, historical SQL and copied operational documents are excluded.
+- GitHub rejected the initial push because the configured OAuth credential lacks the workflow scope. The standard Git credential manager has no available authentication.
+- Required next action: run gh auth refresh -h github.com -s workflow, complete GitHub authorization, then push main and run Batch CI, Validate batch integrations and a one-place manual AI review batch.
+- No original workflows or repository settings were changed. New scheduled processing remains gated and no live migration batch has been executed.
+
+Remote run links and final status will be recorded after authentication and deployment verification.
+
