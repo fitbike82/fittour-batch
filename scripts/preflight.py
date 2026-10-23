@@ -33,7 +33,7 @@ def main():
             raise ValueError('Schema preflight was not true')
     check('tour_schema', schema)
     def tour():
-        response = requests.get('https://apis.data.go.kr/B551011/KorService2/areaBasedList2', params={'serviceKey': unquote(os.environ['TOUR_API_DECODING_KEY'].strip()), 'MobileOS': 'ETC', 'MobileApp': 'FitTour', '_type': 'json', 'numOfRows': 1, 'pageNo': 1}, timeout=(10,30))
+        response = requests.get('https://apis.data.go.kr/B551011/KorService2/areaBasedList2', params={'serviceKey': unquote(os.environ['TOUR_API_DECODING_KEY'].strip()), 'MobileOS': 'ETC', 'MobileApp': 'FitTour', '_type': 'json', 'numOfRows': 1, 'pageNo': 1, 'contentTypeId': '12', 'arrange': 'A'}, timeout=(10,30))
         response.raise_for_status()
         if str(response.json()['response']['header']['resultCode']) not in ('0000','00','0'):
             raise ValueError('TourAPI rejected the request')
