@@ -19,6 +19,8 @@ def main():
         except Exception as exc:
             # Exception strings and request URLs can contain provider credentials.
             checks[name] = {'status': 'failed', 'error_type': type(exc).__name__}
+            if isinstance(exc, requests.HTTPError) and exc.response is not None:
+                checks[name]['http_status'] = exc.response.status_code
     required = ('SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'TOUR_API_DECODING_KEY', 'KAKAO_REST_API_KEY', 'GEMINI_API_KEY')
     missing = [name for name in required if not os.environ.get(name, '').strip()]
     if missing:
@@ -31,7 +33,7 @@ def main():
             raise ValueError('Schema preflight was not true')
     check('tour_schema', schema)
     def tour():
-        response = requests.get('https://apis.data.go.kr/B551011/KorService2/areaBasedList2', params={'serviceKey': unquote(os.environ['TOUR_API_DECODING_KEY']), 'MobileOS': 'ETC', 'MobileApp': 'FitTour', '_type': 'json', 'numOfRows': 1, 'pageNo': 1}, timeout=(10,30))
+        response = requests.get('https://apis.data.go.kr/B551011/KorService2/areaBasedList2', params={'serviceKey': unquote(os.environ['TOUR_API_DECODING_KEY'].strip()), 'MobileOS': 'ETC', 'MobileApp': 'FitTour', '_type': 'json', 'numOfRows': 1, 'pageNo': 1}, timeout=(10,30))
         response.raise_for_status()
         if str(response.json()['response']['header']['resultCode']) not in ('0000','00','0'):
             raise ValueError('TourAPI rejected the request')

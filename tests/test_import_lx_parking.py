@@ -1,3 +1,4 @@
+import csv
 import io
 import json
 from pathlib import Path
@@ -20,8 +21,16 @@ class LXImportTests(unittest.TestCase):
             self.assertEqual(encoding, 'utf-8-sig')
             self.assertEqual(rows[0]['주소'], '서울특별시')
 
-    def test_actual_csv_cp949_and_idempotent_normalization(self):
-        rows, encoding = lx.read_lx(lx.ROOT / 'docs/한국국토정보공사 주차장 정보 DB_20230829.csv')
+    def test_cp949_fixture_and_idempotent_normalization(self):
+        # Standalone CI must not depend on publishing the original source dataset.
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'synthetic-lx.csv'
+            with path.open('w', encoding='cp949', newline='') as handle:
+                writer = csv.DictWriter(handle, fieldnames=['부서명', '주소', '주차장 이용료', '주차장 운영시간'])
+                writer.writeheader()
+                for index in range(179):
+                    writer.writerow({'부서명': f'테스트지사{index}', '주소': f'서울특별시 중구 시험로 {index + 1}', '주차장 이용료': '무료', '주차장 운영시간': '09:00~18:00'})
+            rows, encoding = lx.read_lx(path)
         self.assertEqual(encoding, 'cp949')
         self.assertEqual(len(rows), 179)
         record = lx.normalize(rows[0], (37.5, 127.1))

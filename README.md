@@ -21,7 +21,7 @@ python scripts/sync_tour_enrichment_full.py --limit 10000 --endpoint-daily-limit
 python scripts/import_all_parking.py --dry-run
 ```
 
-All original Python implementations live in `scripts/`. The root Python files are compatibility entry points so existing imports, mocks and commands continue working. The original 120 tests are included unchanged. Parking importers accept operator-supplied CSV files with --file. For the integrated importer, place the public standard parking CSV and LX CSV at the existing docs/ default filenames shown in each script. These source datasets are not published in this code repository. Parking dry runs may geocode addresses and use Kakao quota.
+All original Python implementations live in `scripts/`. The root Python files are compatibility entry points so existing imports, mocks and commands continue working. All original 120 test cases are retained; the LX CSV case uses a synthetic CP949 fixture so CI does not require publishing the raw source dataset. Parking importers accept operator-supplied CSV files with --file. For the integrated importer, place the public standard parking CSV and LX CSV at the existing docs/ default filenames shown in each script. These source datasets are not published in this code repository. Parking dry runs may geocode addresses and use Kakao quota.
 
 ## GitHub Actions
 
