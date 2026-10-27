@@ -4,6 +4,8 @@ import os
 from pathlib import Path
 from urllib.parse import unquote
 
+from gemini_key_pool import discover_keys
+
 import requests
 from dotenv import load_dotenv
 from supabase import create_client, ClientOptions
@@ -21,8 +23,10 @@ def main():
             checks[name] = {'status': 'failed', 'error_type': type(exc).__name__}
             if isinstance(exc, requests.HTTPError) and exc.response is not None:
                 checks[name]['http_status'] = exc.response.status_code
-    required = ('SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'TOUR_API_DECODING_KEY', 'KAKAO_REST_API_KEY', 'GEMINI_API_KEY')
+    required = ('SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'TOUR_API_DECODING_KEY', 'KAKAO_REST_API_KEY')
     missing = [name for name in required if not os.environ.get(name, '').strip()]
+    if not discover_keys():
+        missing.append('GEMINI_API_KEY_01/02/03 or GEMINI_API_KEY')
     if missing:
         raise SystemExit('Missing secrets: ' + ', '.join(missing))
     db = create_client(os.environ['SUPABASE_URL'], os.environ['SUPABASE_SERVICE_ROLE_KEY'], options=ClientOptions(postgrest_client_timeout=20))
@@ -44,12 +48,13 @@ def main():
         if 'documents' not in response.json():
             raise ValueError('Unexpected Kakao response')
     check('kakao_search', kakao)
-    def gemini():
-        response = requests.get('https://generativelanguage.googleapis.com/v1beta/models', headers={'x-goog-api-key': os.environ['GEMINI_API_KEY']}, timeout=(10,20))
+    def gemini(key):
+        response = requests.get('https://generativelanguage.googleapis.com/v1beta/models', headers={'x-goog-api-key': key}, timeout=(10,20))
         response.raise_for_status()
         if not response.json().get('models'):
             raise ValueError('No models returned')
-    check('gemini_authentication', gemini)
+    for label, key in discover_keys():
+        check('gemini_authentication_' + label, lambda key=key: gemini(key))
     path = Path('artifacts/preflight/report.json')
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(checks, indent=2), encoding='utf-8')

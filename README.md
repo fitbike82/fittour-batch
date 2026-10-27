@@ -54,3 +54,9 @@ The original AI queue's database claim/release protocol is retained, so a bounde
 No secrets are stored in code, datasets, sample environment files, logs committed to Git, or artifacts committed to Git. `.env*`, caches, virtual environments, provider reports, SQLite journals and logs are ignored. GitHub secret names can be checked without exposing their values.
 
 See `docs/migration-report.md` for deployment evidence and known limits.
+
+### Gemini project key pool
+
+Set GEMINI_API_KEY_01, GEMINI_API_KEY_02 and GEMINI_API_KEY_03 as repository Secrets for independent Google projects. If none are configured, GEMINI_API_KEY remains the legacy fallback. Scheduled batches distribute their starting keys 7/7/6 across the 20 daily runs; quota errors immediately try the next available key.
+
+Daily exhaustion is cached across serialized Actions runs using only a SHA-256 key fingerprint and the Pacific quota date. Transient RPM errors are not persisted for the day. All-key quota exhaustion releases queued work and ends successfully; actual processing/release errors still fail. Cache outages fall back to per-process circuits. Use GEMINI_BATCH_SLOT=1..20 for deterministic local selection and GEMINI_KEY_POOL_STATE for an optional local state file under an ignored artifacts directory. Never commit populated keys or state files.

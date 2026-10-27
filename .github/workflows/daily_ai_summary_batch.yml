@@ -1,7 +1,8 @@
 name: Daily AI review summary batch
 on:
   schedule:
-    # 20 runs per day, excluding KST 02:00-05:59 maintenance window (UTC 17-20).
+    # 20 runs per day; key selection follows Pacific reset (KST 16/17).
+    # Excluding KST 02:00-05:59 maintenance window (UTC 17-20).
     - cron: '0 0-16,21-23 * * *'
   workflow_dispatch:
     inputs:
@@ -26,8 +27,12 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       KAKAO_REST_API_KEY: ${{ secrets.KAKAO_REST_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY_01: ${{ secrets.GEMINI_API_KEY_01 }}
+      GEMINI_API_KEY_02: ${{ secrets.GEMINI_API_KEY_02 }}
+      GEMINI_API_KEY_03: ${{ secrets.GEMINI_API_KEY_03 }}
       BATCH_LIMIT: ${{ inputs.limit || '50' }}
       PYTHONUNBUFFERED: '1'
+      GEMINI_KEY_POOL_STATE: artifacts/gemini-key-pool/state.json
       TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
       TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
     steps:
@@ -40,6 +45,15 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Run review batch checks
         run: python -m unittest discover -s tests -p 'test*review*.py' -v
+      - name: Compute provider quota day
+        id: quota-day
+        run: echo "day=$(TZ=America/Los_Angeles date +%F)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache/restore@v4
+        continue-on-error: true
+        with:
+          path: artifacts/gemini-key-pool/state.json
+          key: gemini-quota-v1-${{ steps.quota-day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: gemini-quota-v1-${{ steps.quota-day.outputs.day }}-
       - name: Summarize a bounded batch of queued places
         run: |
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
@@ -47,8 +61,14 @@ jobs:
           else
             python scripts/batch_ai_summary_cron.py --limit "$BATCH_LIMIT"
           fi
+      - uses: actions/cache/save@v4
+        continue-on-error: true
+        if: always() && steps.quota-day.outputs.day != '' && hashFiles('artifacts/gemini-key-pool/state.json') != ''
+        with:
+          path: artifacts/gemini-key-pool/state.json
+          key: gemini-quota-v1-${{ steps.quota-day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Verify completed batch outcome
-        run: python scripts/verify_review_report.py
+        run: python scripts/verify_review_report.py --allow-quota-stop
       - name: Upload per-place review report
         if: always()
         uses: actions/upload-artifact@v4

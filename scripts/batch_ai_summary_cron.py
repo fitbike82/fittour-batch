@@ -23,6 +23,11 @@ from pipeline_task2 import (
     mask_sensitive, setup_masking,
 )
 
+try:
+    from gemini_key_pool import discover_keys
+except ModuleNotFoundError:
+    from scripts.gemini_key_pool import discover_keys
+
 LOG = logging.getLogger(__name__)
 EXCLUDED_REASONS = ('insufficient_evidence', 'No unsponsored readable reviews',
                     'Invalid ', 'Ungrounded ')
@@ -377,7 +382,7 @@ def main():
     try:
         key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
         kakao = os.getenv('KAKAO_REST_API_KEY') or os.getenv('KAKAO_API_KEY')
-        if not all((os.getenv('SUPABASE_URL'), key, kakao, os.getenv('GEMINI_API_KEY'))):
+        if not all((os.getenv('SUPABASE_URL'), key, kakao, discover_keys())):
             raise ValueError('Missing API configuration')
         db = create_client(os.environ['SUPABASE_URL'], key,
                            options=ClientOptions(postgrest_client_timeout=15))
@@ -385,7 +390,7 @@ def main():
         deadline = time.monotonic() + args.timeout
         sleep = lambda seconds: budget_sleep(seconds, deadline)
         with BudgetSession(deadline) as session:
-            generator = Gemini(session, os.environ['GEMINI_API_KEY'], sleep=sleep,
+            generator = Gemini(session, sleep=sleep,
                                min_interval=5, max_rpm=12)
             counts = run(db, session, generator, kakao, args.limit, sleep=sleep, report_path=args.report)
         write_report(args.report, counts)

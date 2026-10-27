@@ -36,3 +36,4 @@ sql/
 supabase/
 docs/*
 !docs/migration-report.md
+!docs/task-027-report.md

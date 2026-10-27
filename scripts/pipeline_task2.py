@@ -13,6 +13,10 @@ from collections import deque
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs
 import requests
+try:
+    from gemini_key_pool import KeyPool, discover_keys, mask_keys
+except ModuleNotFoundError:
+    from scripts.gemini_key_pool import KeyPool, discover_keys, mask_keys
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from supabase import create_client
@@ -179,7 +183,7 @@ def mask_sensitive(text: str) -> str:
         val = os.getenv(env_var)
         if val and len(val) >= 5 and val in text:
             text = text.replace(val, '***')
-    return text
+    return mask_keys(text)
 
 
 class MaskingStream:
@@ -307,7 +311,9 @@ def quota_details(response):
 
 
 class Gemini:
-    def __init__(self,session,key,model=MODEL,sleep=time.sleep,clock=time.monotonic,min_interval=0,max_rpm=15,quota_stop_after=20):
+    def __init__(self,session,key=None,model=MODEL,sleep=time.sleep,clock=time.monotonic,min_interval=0,max_rpm=15,quota_stop_after=20):
+        self.pool = KeyPool() if key is None else None
+        self.key_calls = {}
         self.session,self.key,self.model=session,key,model
         self.sleep,self.clock=sleep,clock
         self.calls=deque()
@@ -334,6 +340,25 @@ class Gemini:
         self.calls.append(now)
 
     def request(self,model,payload,max_retries=1):
+        if self.pool is None:
+            return self._request_single(model,payload,max_retries)
+        while self.pool.current() is not None:
+            label, self.key = self.pool.current()
+            self.calls = self.key_calls.setdefault(label, deque())
+            print(f'Gemini {label} request start', flush=True)
+            try:
+                response = self._request_single(model,payload,max_retries)
+                self.request_events[-1]['key_id'] = label
+                print(f'Gemini {label} request success', flush=True)
+                return response
+            except GeminiQuotaDeferred as exc:
+                if self.request_events:
+                    self.request_events[-1]['key_id'] = label
+                print(f'Gemini {label} quota circuit open; trying next key', flush=True)
+                self.pool.exhaust(daily=getattr(exc, 'daily', False))
+        raise GeminiDailyQuotaExhausted('All configured Gemini keys exhausted')
+
+    def _request_single(self,model,payload,max_retries=1):
         if self.consecutive_429 >= self.quota_stop_after:
             raise GeminiCircuitOpen('Gemini consecutive 429 limit reached')
         for attempt in range(max_retries+1):
@@ -349,6 +374,8 @@ class Gemini:
                     f'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
                     headers={'x-goog-api-key':self.key},json=payload,timeout=45)
                 status=response.status_code
+                if status != 200 and is_daily_quota_exceeded(response):
+                    raise ResourceExhausted('Gemini Daily_quota_Exceeded')
                 if status==503: raise ServiceUnavailable('Gemini HTTP 503')
                 if status==429: raise ResourceExhausted('Gemini HTTP 429')
                 if status==404: raise NotFound(f'Gemini model unavailable: {model} (HTTP 404)')
@@ -368,6 +395,10 @@ class Gemini:
                         event['quota']=quota_details(response)
                 self.request_events.append(event)
                 print(mask_sensitive(json.dumps({'gemini_request':event, 'consecutive_429':self.consecutive_429})),flush=True)
+                if code==429 and self.pool is not None:
+                    deferred = GeminiQuotaDeferred('Gemini key quota exhausted')
+                    deferred.daily = is_daily_quota_exceeded(response, exc)
+                    raise deferred from None
                 if code==429 and is_daily_quota_exceeded(response, exc):
                     raise GeminiDailyQuotaExhausted('Gemini daily quota exceeded (ResourceExhausted / quota exceeded)') from None
                 if self.consecutive_429>=self.quota_stop_after:
@@ -469,10 +500,10 @@ def main():
         print(f"Saved {len(report['results'])} validated summaries")
         return 0
     kakao=os.getenv('KAKAO_REST_API_KEY') or os.getenv('KAKAO_API_KEY')
-    if not kakao or not os.getenv('GEMINI_API_KEY'): parser.error('Kakao / Gemini configuration missing')
+    if not kakao or not discover_keys(): parser.error('Kakao / Gemini configuration missing')
     session=requests.Session()
     session.headers['User-Agent']='LocalTripAI/1.0'
-    gemini=Gemini(session,os.environ['GEMINI_API_KEY'],args.model)
+    gemini=Gemini(session,model=args.model)
     report={'model_requested':args.model,'seed':args.seed,
             'started_at':datetime.now(timezone.utc).isoformat(),
             'results':[],'failures':[],'saved':0}
