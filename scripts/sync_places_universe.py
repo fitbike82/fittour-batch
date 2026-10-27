@@ -5,6 +5,7 @@ import math
 import os
 import time
 from datetime import datetime, timedelta
+from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 import requests
@@ -51,8 +52,8 @@ def fetch_page(session, key, endpoint, params, sleep=time.sleep):
     for attempt in range(4):  # initial request + three retries
         try:
             response = session.get(BASE + endpoint, params={
-                "serviceKey": key, "MobileOS": "ETC", "MobileApp": "LocalTripAI",
-                "_type": "json", "numOfRows": 1000, "arrange": "C", **params}, timeout=15)
+                "serviceKey": unquote(key.strip()), "MobileOS": "ETC", "MobileApp": "LocalTripAI",
+                "_type": "json", "numOfRows": 100, "arrange": "C", **params}, timeout=15)
             response.raise_for_status()
             payload = response.json()["response"]
             code = str(payload["header"]["resultCode"])

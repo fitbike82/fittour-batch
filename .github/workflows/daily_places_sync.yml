@@ -3,6 +3,12 @@ on:
   schedule:
     - cron: '30 15 * * *' # UTC 15:30 = next day 00:30 KST
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Incremental sync or full nationwide catalog backfill'
+        type: choice
+        options: ['sync', 'full']
+        default: 'sync'
 permissions:
   contents: read
 concurrency:
@@ -19,6 +25,7 @@ jobs:
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       TOUR_API_DECODING_KEY: ${{ secrets.TOUR_API_DECODING_KEY }}
       PYTHONUNBUFFERED: '1'
+      CATALOG_MODE: ${{ inputs.mode || 'sync' }}
       TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
       TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
     steps:
@@ -30,4 +37,4 @@ jobs:
           cache-dependency-path: requirements.txt
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v
-      - run: python scripts/sync_places_universe.py --area all --mode sync --batch-size 500
+      - run: python scripts/sync_places_universe.py --area all --mode "$CATALOG_MODE" --batch-size 1000

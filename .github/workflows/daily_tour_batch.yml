@@ -44,7 +44,7 @@ jobs:
           key: ${{ runner.os }}-tour-enrichment-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: ${{ runner.os }}-tour-enrichment-
       - name: Enrich missing endpoints with independent daily budgets
-        run: python scripts/sync_tour_enrichment_full.py --limit 10000 --endpoint-daily-limit 1000 --max-seconds 2700 --delay 0.2
+        run: python scripts/sync_tour_enrichment_full.py --limit 50000 --endpoint-daily-limit 100000 --with-endpoint-daily-limit 1000 --workers 4 --max-seconds 2700 --delay 0.1
       - name: Save page journal even after partial/API failures
         if: always()
         uses: actions/cache/save@v4

@@ -16,8 +16,8 @@ cp .env.example .env
 # Fill server-side credentials locally. Never commit the populated file.
 python -m unittest -v
 python scripts/batch_ai_summary_cron.py --limit 1
-python scripts/sync_places_universe.py --area all --mode sync --batch-size 500
-python scripts/sync_tour_enrichment_full.py --limit 10000 --endpoint-daily-limit 1000 --max-seconds 2700 --delay 0.2
+python scripts/sync_places_universe.py --area all --mode sync --batch-size 1000
+python scripts/sync_tour_enrichment_full.py --limit 50000 --endpoint-daily-limit 100000 --with-endpoint-daily-limit 1000 --workers 4 --max-seconds 2700 --delay 0.1
 python scripts/import_all_parking.py --dry-run
 ```
 
@@ -60,3 +60,12 @@ See `docs/migration-report.md` for deployment evidence and known limits.
 Set GEMINI_API_KEY_01, GEMINI_API_KEY_02 and GEMINI_API_KEY_03 as repository Secrets for independent Google projects. If none are configured, GEMINI_API_KEY remains the legacy fallback. Scheduled batches distribute their starting keys 7/7/6 across the 20 daily runs; quota errors immediately try the next available key.
 
 Daily exhaustion is cached across serialized Actions runs using only a SHA-256 key fingerprint and the Pacific quota date. Transient RPM errors are not persisted for the day. All-key quota exhaustion releases queued work and ends successfully; actual processing/release errors still fail. Cache outages fall back to per-process circuits. Use GEMINI_BATCH_SLOT=1..20 for deterministic local selection and GEMINI_KEY_POOL_STATE for an optional local state file under an ignored artifacts directory. Never commit populated keys or state files.
+
+
+### Approved Korean TourAPI production quota
+
+KorService2 uses v2 catalog/common/intro/image endpoints with an independent 100,000-call KST daily cap per operation. The catalog includes restaurants (39), lodging (32) and the existing categories, requests 100 rows per page, and supports a manual full nationwide backfill via the places workflow mode input. The scheduled mode remains incremental sync.
+
+The enrichment workflow uses four bounded network prefetch workers and a shared 0.1-second request-start interval. SQLite quota reservations and page checkpoints are locked; database writes remain serial through the existing transactional RPC. Menu images share the detailImage2 operation budget. Real provider quota responses still block only that operation, and rate-limit code 23 retains bounded backoff. The separately subscribed KorWithService2 retains its 1,000 cap until its own approval is confirmed.
+
+An approval increase reopens the previous development quota block once without resetting usage counters. Worker count, delay, runtime and endpoint budgets remain configurable. A time limit can end a run before all candidates are scanned; later cached runs resume missing pages/endpoints. Validate a bounded live sample with `python scripts/verify_tour_production_live.py --env-file <server-env-path>`; this command writes 50 real master rows and 150 detail payloads and sends no notifications.

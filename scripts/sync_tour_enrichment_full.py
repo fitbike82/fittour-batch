@@ -16,6 +16,9 @@ import random
 import sqlite3
 import sys
 import time
+import threading
+from functools import wraps
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
@@ -27,6 +30,9 @@ SERVICES = {
     "KorService2": ("detailCommon2", "detailIntro2", "detailInfo2", "detailImage2", "detailPetTour2"),
     "KorWithService2": ("detailWithTour2", "detailCommon2", "detailIntro2", "detailInfo2", "detailImage2"),
 }
+PRODUCTION_ENDPOINT_LIMIT = 100_000
+DEVELOPMENT_ENDPOINT_LIMIT = 1_000
+
 SUCCESS = {"0000", "00", "0"}
 
 
@@ -79,15 +85,25 @@ def items_from(payload):
     return rows, int(body.get("totalCount") or 0)
 
 
+def journal_locked(method):
+    @wraps(method)
+    def protected(self, *args, **kwargs):
+        with self.lock:
+            return method(self, *args, **kwargs)
+    return protected
+
+
 class Journal:
     """Crash-safe page cache and per-operation daily budgets (KST)."""
     def __init__(self, path, key, global_limit=999999, service_limit=999999, force=False):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(path)
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(path, check_same_thread=False, timeout=30)
         self.db.execute("pragma journal_mode=WAL")
         self.db.executescript("""
           create table if not exists operation_calls (key_id text, day text, service text, endpoint text, count integer not null, primary key(key_id,day,service,endpoint));
           create table if not exists operation_blocks (key_id text, day text, service text, endpoint text, code text, primary key(key_id,day,service,endpoint));
+          create table if not exists operation_policies (key_id text, service text, approved_limit integer not null, primary key(key_id,service));
           create table if not exists calls (key_id text, day text, service text, count integer not null, primary key(key_id,day,service));
           create table if not exists pages (place_id text, service text, endpoint text, page integer, payload text not null, primary key(place_id,service,endpoint,page));
           create table if not exists commits (place_id text, service text, endpoint text, digest text not null, primary key(place_id,service,endpoint));
@@ -95,15 +111,31 @@ class Journal:
           create table if not exists successful_places (key_id text, day text, place_id text, primary key(key_id,day,place_id));
         """)
         self.key_id = hashlib.sha256(key.encode()).hexdigest()[:20]
-        self.endpoint_limit = 1000
+        self.endpoint_limit = PRODUCTION_ENDPOINT_LIMIT
+        self.service_limits = {}
         self.ensure_day()
 
+    @journal_locked
     def ensure_day(self):
         day = kst_today()
         self.db.executemany('insert or ignore into calls values(?,?,?,0)', [(self.key_id, day, service) for service in SERVICES])
         self.db.commit()
         return day
 
+    @journal_locked
+    def configure_policy(self, service, approved_limit):
+        """Reopen old development quota blocks once when approval increases; keep counters."""
+        previous = self.db.execute('select approved_limit from operation_policies where key_id=? and service=?', (self.key_id, service)).fetchone()
+        old_limit = previous[0] if previous else DEVELOPMENT_ENDPOINT_LIMIT
+        reopened = 0
+        if approved_limit > old_limit:
+            result = self.db.execute('delete from operation_blocks where key_id=? and day=? and service=?', (self.key_id, self.ensure_day(), service))
+            reopened = result.rowcount
+        self.db.execute('insert into operation_policies values(?,?,?) on conflict(key_id,service) do update set approved_limit=excluded.approved_limit', (self.key_id, service, approved_limit))
+        self.db.commit()
+        return {'service': service, 'previous_limit': old_limit, 'approved_limit': approved_limit, 'reopened_blocks': reopened}
+
+    @journal_locked
     def revision(self, cid, revision, refresh=False):
         old = self.db.execute('select revision from revisions where place_id=?', (cid,)).fetchone()
         if refresh or (old and old[0] != revision):
@@ -112,25 +144,29 @@ class Journal:
         self.db.execute('insert or replace into revisions values(?,?)', (cid, revision))
         self.db.commit()
 
+    @journal_locked
     def available(self, service, endpoint):
         day, endpoint = self.ensure_day(), operation(endpoint)
         blocked = self.db.execute('select 1 from operation_blocks where key_id=? and day=? and service=? and endpoint=?', (self.key_id, day, service, endpoint)).fetchone()
         row = self.db.execute('select count from operation_calls where key_id=? and day=? and service=? and endpoint=?', (self.key_id, day, service, endpoint)).fetchone()
-        return not blocked and (row[0] if row else 0) < self.endpoint_limit
+        return not blocked and (row[0] if row else 0) < self.service_limits.get(service, self.endpoint_limit)
 
+    @journal_locked
     def block(self, service, endpoint, code):
         self.db.execute('insert or replace into operation_blocks values(?,?,?,?,?)', (self.key_id, self.ensure_day(), service, operation(endpoint), code))
         self.db.commit()
 
+    @journal_locked
     def endpoint_usage(self):
         day = self.ensure_day()
         rows = dict(((s, e), n) for s, e, n in self.db.execute('select service,endpoint,count from operation_calls where key_id=? and day=?', (self.key_id, day)))
         blocks = dict(((s, e), code) for s, e, code in self.db.execute('select service,endpoint,code from operation_blocks where key_id=? and day=?', (self.key_id, day)))
         return [{'service': service, 'endpoint': endpoint, 'calls': rows.get((service, endpoint), 0),
-                 'limit': self.endpoint_limit, 'image': endpoint == 'detailImage2',
+                 'limit': self.service_limits.get(service, self.endpoint_limit), 'image': endpoint == 'detailImage2',
                  'provider_block': blocks.get((service, endpoint))}
                 for service, endpoints in SERVICES.items() for endpoint in endpoints]
 
+    @journal_locked
     def reserve(self, service, endpoint=None):
         day = self.ensure_day()
         self.db.execute("begin immediate")
@@ -140,7 +176,7 @@ class Journal:
                 day = kst_today()
                 blocked = self.db.execute('select 1 from operation_blocks where key_id=? and day=? and service=? and endpoint=?', (self.key_id, day, service, endpoint)).fetchone()
                 row = self.db.execute('select count from operation_calls where key_id=? and day=? and service=? and endpoint=?', (self.key_id, day, service, endpoint)).fetchone()
-                if blocked or (row and row[0] >= self.endpoint_limit):
+                if blocked or (row and row[0] >= self.service_limits.get(service, self.endpoint_limit)):
                     raise EndpointBudgetStop(f'{service}/{endpoint}: daily operation budget unavailable')
                 self.db.execute('insert into operation_calls values(?,?,?,?,1) on conflict(key_id,day,service,endpoint) do update set count=count+1', (self.key_id, day, service, endpoint))
             self.db.execute("insert into calls values(?,?,?,1) on conflict(key_id,day,service) do update set count=count+1", (self.key_id, day, service))
@@ -149,31 +185,38 @@ class Journal:
             self.db.rollback()
             raise
 
+    @journal_locked
     def cached(self, cid, service, endpoint, page):
         row = self.db.execute("select payload from pages where place_id=? and service=? and endpoint=? and page=?", (cid, service, endpoint, page)).fetchone()
         return json.loads(row[0]) if row else None
 
+    @journal_locked
     def save(self, cid, service, endpoint, page, payload):
         self.db.execute("insert or replace into pages values(?,?,?,?,?)", (cid, service, endpoint, page, json.dumps(payload, ensure_ascii=False)))
         self.db.commit()
 
+    @journal_locked
     def committed(self, cid, service, endpoint, digest):
         row = self.db.execute("select digest from commits where place_id=? and service=? and endpoint=?", (cid, service, endpoint)).fetchone()
         return bool(row and row[0] == digest)
 
+    @journal_locked
     def mark(self, cid, service, endpoint, digest):
         self.db.execute("insert or replace into commits values(?,?,?,?)", (cid, service, endpoint, digest))
         self.db.commit()
 
+    @journal_locked
     def day_calls(self):
         day = self.ensure_day()
         return dict(self.db.execute('select service,count from calls where key_id=? and day=?', (self.key_id, day)))
 
+    @journal_locked
     def processed(self, cid):
         day = self.ensure_day()
         self.db.execute('insert or ignore into successful_places values(?,?,?)', (self.key_id, day, cid))
         self.db.commit()
 
+    @journal_locked
     def day_processed(self):
         day = self.ensure_day()
         return self.db.execute('select count(*) from successful_places where key_id=? and day=?', (self.key_id, day)).fetchone()[0]
@@ -210,7 +253,7 @@ class Database:
         while len(selected) < limit:
             params = {"select": "content_id,content_type_id,title,modified_time",
                       "order": "content_id",
-                      "offset": len(selected), "limit": min(300, limit - len(selected))}
+                      "offset": len(selected), "limit": min(1000, limit - len(selected))}
             if cid:
                 params["content_id"] = "eq." + cid
             rows = self.request("GET", "places", params=params)
@@ -227,7 +270,7 @@ class Database:
         found = set()
         offset = 0
         while True:
-            rows = self.request('GET', 'place_tour_payloads', params={'select': 'place_id,source_service,endpoint,source_modified_time', 'order': 'place_id,source_service,endpoint', 'offset': offset, 'limit': 500})
+            rows = self.request('GET', 'place_tour_payloads', params={'select': 'place_id,source_service,endpoint,source_modified_time', 'order': 'place_id,source_service,endpoint', 'offset': offset, 'limit': 1000})
             if not rows:
                 return found
             for row in rows:
@@ -244,6 +287,9 @@ class TourClient:
         self.retries = retries
         self.http = requests.Session()
         self.last_call = 0.0
+        self.rate_lock = threading.Lock()
+        self.worker_http = threading.local()
+        self.deadline = None
 
     def page(self, service, endpoint, place, page):
         cid = str(place["content_id"])
@@ -257,10 +303,18 @@ class TourClient:
             params.update(imageYN="N" if endpoint.endswith('.menu') else "Y")
         for attempt in range(self.retries):
             self.journal.reserve(service, endpoint)
-            time.sleep(max(0, self.delay - (time.monotonic() - self.last_call)))
-            self.last_call = time.monotonic()
+            with self.rate_lock:
+                time.sleep(max(0, self.delay - (time.monotonic() - self.last_call)))
+                self.last_call = time.monotonic()
+            if self.deadline is not None and time.monotonic() >= self.deadline:
+                raise EndpointBudgetStop('Runtime deadline reached; checkpoint retained')
             try:
-                response = self.http.get(f"https://apis.data.go.kr/B551011/{service}/{endpoint.split('.')[0]}", params=params, timeout=(10, 30))
+                http = self.http
+                if threading.current_thread() is not threading.main_thread() and isinstance(http, requests.sessions.Session):
+                    if not hasattr(self.worker_http, 'session'):
+                        self.worker_http.session = requests.Session()
+                    http = self.worker_http.session
+                response = http.get(f"https://apis.data.go.kr/B551011/{service}/{endpoint.split('.')[0]}", params=params, timeout=(10, 30))
                 if response.status_code == 429:
                     body = response.content.decode('utf-8-sig', errors='replace')
                     try:
@@ -412,8 +466,10 @@ def send_telegram_report(report):
 def _run_batch(argv, report, context):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--content-id")
-    parser.add_argument("--limit", type=int, default=10000, help="Maximum candidate places scanned; API budgets are independent")
-    parser.add_argument("--endpoint-daily-limit", type=int, default=1000)
+    parser.add_argument("--limit", type=int, default=50000, help="Maximum candidate places scanned; API budgets are independent")
+    parser.add_argument("--endpoint-daily-limit", type=int, default=PRODUCTION_ENDPOINT_LIMIT)
+    parser.add_argument("--with-endpoint-daily-limit", type=int, default=DEVELOPMENT_ENDPOINT_LIMIT)
+    parser.add_argument("--workers", type=int, default=1, help="Bounded endpoint prefetch workers (1-8); workflows use 4")
     parser.add_argument("--max-seconds", type=float, default=2700)
     parser.add_argument("--storage-mode", choices=("rpc", "legacy"), default="rpc")
     parser.add_argument("--checkpoint", default="artifacts/tour-enrichment/checkpoint.sqlite3")
@@ -423,8 +479,8 @@ def _run_batch(argv, report, context):
     parser.add_argument("--refresh", action="store_true", help="Refetch selected places, retaining all previous quota reservations")
     parser.add_argument('--force', '--ignore-quota', action='store_true', help='Legacy compatibility option; does not bypass per-API budgets')
     args = parser.parse_args(argv)
-    if args.delay < 0 or args.limit < 1 or args.endpoint_daily_limit < 1 or args.max_seconds <= 0:
-        parser.error("delay >= 0, limit >= 1")
+    if args.delay < 0 or args.limit < 1 or not 1 <= args.endpoint_daily_limit <= PRODUCTION_ENDPOINT_LIMIT or not 1 <= args.with_endpoint_daily_limit <= PRODUCTION_ENDPOINT_LIMIT or not 1 <= args.workers <= 8 or args.max_seconds <= 0:
+        parser.error("delay >= 0, limit >= 1, daily limits 1..100000, workers 1..8, max-seconds > 0")
     load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     key = os.environ.get("TOUR_API_DECODING_KEY") or os.environ.get("TOUR_API_KEY")
     url = os.environ.get("SUPABASE_URL")
@@ -446,7 +502,7 @@ def _run_batch(argv, report, context):
         parser.error('Resumable collection requires rpc storage and place_tour_payloads')
     completed = db.completed()
     existing_ids = {str(row[0]) for row in completed}
-    catalog = list(db.targets(args.content_id, limit=100000))
+    catalog = list(db.targets(args.content_id, limit=500000))
     context['catalog'] = catalog if not args.content_id else None
     targets = [p for p in catalog if args.refresh or not all(
         (str(p['content_id']), service, endpoint, str(p.get('modified_time') or '')) in completed
@@ -459,11 +515,23 @@ def _run_batch(argv, report, context):
     print(f'신규 대상 {len(target_ids)}곳 추출 완료 (ID 범위: {target_ids[0] if target_ids else "-"} ~ {target_ids[-1] if target_ids else "-"})', flush=True)
     journal = Journal(args.checkpoint, key, args.daily_limit, args.service_daily_limit, force=args.force)
     journal.endpoint_limit = args.endpoint_daily_limit
+    journal.service_limits['KorWithService2'] = args.with_endpoint_daily_limit
+    report['quota_policy'] = [journal.configure_policy('KorService2', args.endpoint_daily_limit),
+                              journal.configure_policy('KorWithService2', args.with_endpoint_daily_limit)]
     context['journal'] = journal
     context['initial_endpoint_usage'] = {(r['service'], r['endpoint']): r['calls'] for r in journal.endpoint_usage()}
     deadline = time.monotonic() + args.max_seconds
     client = TourClient(key, journal, db if args.storage_mode == "rpc" else None, delay=args.delay,
                         global_limit=args.daily_limit, service_limit=args.service_daily_limit, force=args.force)
+    client.deadline = deadline
+    executor = ThreadPoolExecutor(max_workers=args.workers) if args.workers > 1 else None
+    context['executor'] = executor
+    def prefetch(service, endpoint, place):
+        try:
+            return client.collect(service, endpoint, place)
+        except QuotaStop as exc:
+            journal.block(service, endpoint, exc.code)
+            raise
     report.update(storage_mode=args.storage_mode, endpoints=[], quota_stopped=False, processed_count=0, limit=args.limit, api_status='정상')
     count, failures = 0, 0
     blocked_endpoints = set()
@@ -485,6 +553,12 @@ def _run_batch(argv, report, context):
         journal.revision(cid, str(place.get('modified_time') or ''), args.refresh)
         successful = set()
         saved_this_place = 0
+        futures = {}
+        if executor:
+            for service, endpoint in sorted(required):
+                if (service, operation(endpoint)) in blocked_endpoints or (not args.refresh and (cid, service, endpoint, revision) in completed):
+                    continue
+                futures[service, endpoint] = executor.submit(prefetch, service, endpoint, place)
         for service, endpoints in SERVICES.items():
             expanded = [variant for endpoint in endpoints for variant in ([endpoint, endpoint + '.menu'] if endpoint == 'detailImage2' and str(place['content_type_id']) == '39' else [endpoint])]
             for endpoint in expanded:
@@ -501,7 +575,7 @@ def _run_batch(argv, report, context):
                 if (service, operation(endpoint)) in blocked_endpoints:
                     continue
                 try:
-                    pages, items = client.collect(service, endpoint, place)
+                    pages, items = futures[service, endpoint].result() if executor else client.collect(service, endpoint, place)
                     digest = hashlib.sha256(json.dumps(pages, sort_keys=True).encode()).hexdigest()
                     # Local marker is only set after all DB writes succeed.
                     if args.storage_mode == 'rpc' or not journal.committed(cid, service, endpoint, digest):
@@ -553,6 +627,10 @@ def _run_batch(argv, report, context):
                 report['non_image_complete_count'] += 1
         else:
             report['no_progress_count'] += 1
+    if executor:
+        executor.shutdown(wait=True, cancel_futures=True)
+        context['executor'] = None
+    report.update(workers=args.workers, endpoint_daily_limit=args.endpoint_daily_limit)
     report.update(local_budget_wait=bool(blocked_endpoints), places_attempted=count, failures=failures,
                   blocked_endpoints=[{'service': s, 'endpoint': e} for s, e in sorted(blocked_endpoints)])
     # Provider quota exhaustion is an expected resumable outcome, not a batch failure.
@@ -575,6 +653,8 @@ def main(argv=None):
         report.update(status=f'예외 종료 ({type(exc).__name__}, 재시도 필요)', exception_type=type(exc).__name__)
         raise
     finally:
+        if context.get('executor'):
+            context['executor'].shutdown(wait=True, cancel_futures=True)
         journal, db = context.get('journal'), context.get('db')
         if journal:
             try:
