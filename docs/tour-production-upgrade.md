@@ -59,3 +59,11 @@
 실제 응답·체크포인트는 Git 제외 경로 artifacts/tour-production-validation/에 보관했습니다. 실제 키·환경파일·SQLite·공급자 원문은 커밋하지 않습니다. local-trip-ai 파일은 수정하지 않았습니다. 기존 DB 스키마나 이력 마이그레이션은 수정하지 않고 이미 배포된 적재 RPC를 사용합니다.
 
 공식 서비스 및 오류 코드 근거: https://www.data.go.kr/data/15101578/openapi.do
+
+## 최종 원격 적용 확인
+
+- 구현 커밋: 0577aa0134df53e89e4fcc950a31eacd6f601648 — origin/main 푸시 완료.
+- 원격 Batch CI: https://github.com/fitbike82/fittour-batch/actions/runs/40484480363 — success.
+- 최종 로컬 전수 테스트: 140개 통과(6.429초), 실패 0개.
+- 스테이징된 9개 파일에서 금지 산출물·실제 환경변수 비밀값 발견 0건. 실제 원문과 SQLite는 artifacts 아래에만 유지합니다.
+- 기존 실행 중인 작업에는 소급 적용되지 않고, 다음 신규 작업부터 운영 설정을 사용합니다.
