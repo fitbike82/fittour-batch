@@ -69,3 +69,19 @@ KorService2 uses v2 catalog/common/intro/image endpoints with an independent 100
 The enrichment workflow uses four bounded network prefetch workers and a shared 0.1-second request-start interval. SQLite quota reservations and page checkpoints are locked; database writes remain serial through the existing transactional RPC. Menu images share the detailImage2 operation budget. Real provider quota responses still block only that operation, and rate-limit code 23 retains bounded backoff. The separately subscribed KorWithService2 retains its 1,000 cap until its own approval is confirmed.
 
 An approval increase reopens the previous development quota block once without resetting usage counters. Worker count, delay, runtime and endpoint budgets remain configurable. A time limit can end a run before all candidates are scanned; later cached runs resume missing pages/endpoints. Validate a bounded live sample with `python scripts/verify_tour_production_live.py --env-file <server-env-path>`; this command writes 50 real master rows and 150 detail payloads and sends no notifications.
+
+## TASK-030 / TASK-031 TypeScript batches
+
+Node.js 22+ one-off nationwide catalog and concurrent detail collection:
+
+```sh
+npm ci
+npm run sync:master -- --env-file /path/to/server.env
+npm run batch-tour-enrichment -- --env-file /path/to/server.env
+```
+
+Apply the additive migration first. See [installation, schema mapping, quotas,
+resume behavior and validation](docs/task-030-031.md). The TypeScript jobs register
+no new schedule. They reserve at most 100000 TourAPI calls per KST day across both
+commands; existing Python jobs have separate accounting and must not overlap a full
+backfill without accounting for their usage.

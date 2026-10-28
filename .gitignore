@@ -39,3 +39,12 @@ docs/*
 !docs/task-027-report.md
 
 !docs/tour-production-upgrade.md
+
+# TypeScript batch runtime
+node_modules/
+!docs/task-030-031.md
+!supabase/
+supabase/*
+!supabase/migrations/
+supabase/migrations/*
+!supabase/migrations/*_batch_tour_enrichment.sql

@@ -1,0 +1,26 @@
+{
+  "name": "fittour-batch",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "sync:master": "tsx scripts/sync-master-catalog.ts",
+    "batch-tour-enrichment": "tsx src/jobs/enrichment.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/node/*.test.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.118.0",
+    "dotenv": "17.2.3",
+    "p-limit": "7.3.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.12",
+    "@types/node": "22.20.5",
+    "tsx": "4.23.15",
+    "typescript": "7.0.2"
+  }
+}
