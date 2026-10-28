@@ -3,12 +3,15 @@ import argparse
 import logging
 import math
 import os
+import re
 import time
 from datetime import datetime, timedelta
 from urllib.parse import unquote
 from zoneinfo import ZoneInfo
 
 import requests
+import httpx
+from postgrest.exceptions import APIError
 from dotenv import load_dotenv
 from supabase import create_client
 from batch_enrich_cron import send_telegram_alert
@@ -30,22 +33,68 @@ FIELDS = {"content_id": "contentid", "content_type_id": "contenttypeid",
           "mlevel": "mlevel", "modified_time": "modifiedtime"}
 
 
+# Conservative input budgets; addr1/addr2 are TEXT in the setup SQL.
+# Unknown tighter deployment constraints are handled by RPC isolation below.
+TEXT_LIMITS = {"title": 255, "addr1": 120, "addr2": 120, "zipcode": 20,
+               "tel": 100, "first_image": 2048, "first_image2": 2048,
+               "area_code": 10, "sigungu_code": 10, "ldong_regn_cd": 10,
+               "mlevel": 10}
+
+
+def sanitize_date(value):
+    value = str(value or "").strip()
+    if not re.fullmatch(r"[0-9]{8}", value):
+        return None
+    try:
+        datetime.strptime(value, "%Y%m%d")
+    except ValueError:
+        return None
+    return value
+
+
 def map_item(item, active):
-    row = {dest: str(item.get(src) or "").strip() or None
+    row = {dest: str(item.get(src) or "").replace("\x00", "").strip() or None
            for dest, src in FIELDS.items()}
     if not row["content_id"] or not row["modified_time"]:
         raise ValueError("TourAPI record missing identity or modification timestamp")
+    if not re.fullmatch(r"[0-9]{14}", row["modified_time"]):
+        raise ValueError("Invalid modification timestamp")
     datetime.strptime(row["modified_time"], "%Y%m%d%H%M%S")
     if active and (not row["title"] or int(row["content_type_id"] or 0) not in TYPES):
         raise ValueError("TourAPI active record missing title or valid category")
+    for field, limit in TEXT_LIMITS.items():
+        if row[field] is not None:
+            row[field] = row[field][:limit]
+    for field in ("eventstartdate", "eventenddate"):
+        row[field] = sanitize_date(item.get(field))
     try:
         x, y = float(item.get("mapx") or 0), float(item.get("mapy") or 0)
         valid = math.isfinite(x) and math.isfinite(y) and 124 <= x <= 132 and 33 <= y <= 38.6
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         x = y = 0
         valid = False
     row.update(mapx=x if valid else None, mapy=y if valid else None, is_active=active)
     return row
+
+
+def sync_batch(db, rows):
+    """Split rejected transactions to retain good rows without retrying outages."""
+    try:
+        return db.rpc("sync_places_universe_batch", {"p_rows": rows}).execute().data
+    except (APIError, requests.HTTPError, httpx.HTTPStatusError) as exc:
+        if not isinstance(exc, APIError) and getattr(exc.response, "status_code", None) != 400:
+            raise
+        # Never log exception text/payloads: they may contain credentials or source data.
+        if len(rows) == 1:
+            LOG.warning("Skipping RPC-rejected record content_id=%s category=%s error=%s",
+                        rows[0]["content_id"], rows[0]["content_type_id"], type(exc).__name__)
+            return dict(inserted=0, updated=0, skipped=1, deactivated=0)
+        LOG.warning("RPC rejected batch size=%s; isolating records (%s)",
+                    len(rows), type(exc).__name__)
+    middle = len(rows) // 2
+    left = sync_batch(db, rows[:middle])
+    right = sync_batch(db, rows[middle:])
+    return {name: left[name] + right[name] for name in left}
 
 
 def fetch_page(session, key, endpoint, params, sleep=time.sleep):
@@ -102,14 +151,21 @@ def run(db, api_key, area, mode, batch_size, session=None):
                 expected = total
                 if not items and consumed < expected:
                     raise RuntimeError("TourAPI returned an incomplete page; checkpoint retained")
-                rows = [map_item(item, flag == "1") for item in items]
+                rows = []
+                for item in items:
+                    try:
+                        rows.append(map_item(item, flag == "1"))
+                    except (ValueError, TypeError, AttributeError, OverflowError):
+                        totals["skipped"] += 1
+                        LOG.warning("Skipping malformed record content_id=%s category=%s page=%s",
+                                    item.get("contentid") if isinstance(item, dict) else None,
+                                    category, page)
                 ids = [row["content_id"] for row in rows]
                 if len(set(ids)) != len(ids) or seen.intersection(ids):
                     raise RuntimeError("TourAPI repeated records while paging; checkpoint retained")
                 seen.update(ids)
                 for offset in range(0, len(rows), batch_size):
-                    counts = db.rpc("sync_places_universe_batch", {
-                        "p_rows": rows[offset:offset + batch_size]}).execute().data
+                    counts = sync_batch(db, rows[offset:offset + batch_size])
                     for name in totals:
                         totals[name] += counts[name]
                 consumed += len(items)
@@ -132,7 +188,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--area", default="all")
     parser.add_argument("--mode", choices=("full", "sync"), default="full")
-    parser.add_argument("--batch-size", type=int, default=500)
+    parser.add_argument("--batch-size", type=int, default=100)
     args = parser.parse_args()
     if args.area != "all" and (not args.area.isdigit() or int(args.area) <= 0):
         parser.error("--area must be all or a positive region code")

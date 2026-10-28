@@ -45,6 +45,73 @@ class UniverseTests(unittest.TestCase):
             self.assertIsNone(mapped["mapx"])
             self.assertIsNone(mapped["mapy"])
 
+    def test_festival_sanitization(self):
+        raw = item()
+        raw.update(contenttypeid="15", title="x" * 400, addr1="a" * 400,
+                   addr2="b" * 400, tel="123\x00456")
+        for value in (None, "", "bad", "nan", "inf", "200", [], {}):
+            for field in ("mapx", "mapy"):
+                candidate = dict(raw, **{field: value})
+                mapped = map_item(candidate, True)
+                self.assertIsNone(mapped["mapx"])
+                self.assertIsNone(mapped["mapy"])
+        for value in (None, "", "2026-10-28", "20260230", "20261301", "garbage", "????????"):
+            raw.update(eventstartdate=value, eventenddate=value)
+            mapped = map_item(raw, True)
+            self.assertIsNone(mapped["eventstartdate"])
+            self.assertIsNone(mapped["eventenddate"])
+        raw.update(eventstartdate="20240229", eventenddate="20261028")
+        mapped = map_item(raw, True)
+        self.assertEqual(mapped["eventstartdate"], "20240229")
+        self.assertEqual(mapped["eventenddate"], "20261028")
+        self.assertEqual(len(mapped["title"]), 255)
+        self.assertEqual(len(mapped["addr1"]), 120)
+        self.assertEqual(mapped["tel"], "123456")
+        self.assertEqual(mapped["mapx"], 126.9)
+
+    def test_rejected_festival_continues_pages_and_later_categories(self):
+        from postgrest.exceptions import APIError
+        db = self.make_db()
+        original = db.rpc.side_effect
+        accepted = []
+        def rpc(name, params):
+            if name == "sync_places_universe_batch":
+                rows = params["p_rows"]
+                if any(r["content_id"] == "bad" for r in rows):
+                    raise APIError({"code": "22007", "message": "invalid date", "details": None, "hint": None})
+                accepted.extend(r["content_id"] for r in rows)
+            return original(name, params)
+        db.rpc.side_effect = rpc
+        def fetch(http, key, endpoint, params):
+            category, page = params["contentTypeId"], params["pageNo"]
+            if category == 15 and page == 1:
+                return [item("good1"), item("bad"), item("good2"), {"contentid": "malformed"}], 5
+            if category == 15:
+                return [item("next-page")], 5
+            return [item(str(category))], 1
+        with patch("sync_places_universe.fetch_page", side_effect=fetch), self.assertLogs(level="WARNING") as logs:
+            counts = run(db, "key", "all", "full", 100)
+        self.assertEqual(counts["skipped"], 2)
+        self.assertEqual(counts["inserted"], 10)
+        self.assertEqual(len(accepted), len(set(accepted)))
+        self.assertTrue({"good1", "good2", "next-page", "32", "39"}.issubset(accepted))
+        self.assertTrue(any("content_id=bad" in line for line in logs.output))
+
+    def test_http_400_isolated_but_server_errors_propagate(self):
+        import requests
+        from sync_places_universe import sync_batch
+        row = map_item(item(), True)
+        for status in (400, 503):
+            db = Mock()
+            response = requests.Response()
+            response.status_code = status
+            db.rpc.return_value.execute.side_effect = requests.HTTPError(response=response)
+            if status == 400:
+                self.assertEqual(sync_batch(db, [row])["skipped"], 1)
+            else:
+                with self.assertRaises(requests.HTTPError):
+                    sync_batch(db, [row])
+
     def test_tombstone_needs_no_title_or_category(self):
         mapped = map_item(dict(contentid="1", modifiedtime="20261014123000"), False)
         self.assertFalse(mapped["is_active"])
