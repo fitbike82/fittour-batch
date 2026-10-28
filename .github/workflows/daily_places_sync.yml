@@ -1,40 +1,56 @@
-name: Daily places universe sync
+name: Daily master catalog sync
 on:
   schedule:
-    - cron: '30 15 * * *' # UTC 15:30 = next day 00:30 KST
+    - cron: '0 16 * * *' # 01:00 KST
   workflow_dispatch:
     inputs:
       mode:
-        description: 'Incremental sync or full nationwide catalog backfill'
+        description: 'Daily modified-place upsert or one-off full nationwide catalog'
         type: choice
-        options: ['sync', 'full']
-        default: 'sync'
+        options: ['daily', 'full']
+        default: 'daily'
 permissions:
   contents: read
 concurrency:
-  group: places-universe-sync
+  group: fittour-tourapi-relay
   cancel-in-progress: false
 jobs:
   sync:
-    # Do not duplicate the original repository's schedules during migration.
-    if: github.event_name == 'workflow_dispatch' || vars.BATCH_SCHEDULE_ENABLED == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       TOUR_API_DECODING_KEY: ${{ secrets.TOUR_API_DECODING_KEY }}
-      PYTHONUNBUFFERED: '1'
-      CATALOG_MODE: ${{ inputs.mode || 'sync' }}
-      TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
-      TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
+      CATALOG_MODE: ${{ inputs.mode || 'daily' }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-node@v4
         with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: requirements.txt
-      - run: python -m pip install -r requirements.txt
-      - run: python -m unittest discover -s tests -v
-      - run: python scripts/sync_places_universe.py --area all --mode "$CATALOG_MODE" --batch-size 1000
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Refresh master before the detail relays
+        shell: bash
+        run: |
+          command='sync:daily-master'
+          if [[ "$CATALOG_MODE" == full ]]; then command='sync:master'; fi
+          mkdir -p artifacts/tour-batch
+          set +e
+          npm run "$command" 2>&1 | tee artifacts/tour-batch/run.log
+          status=${PIPESTATUS[0]}
+          set -e
+          if [[ "$status" == 2 ]]; then
+            echo 'Daily quota exhausted; checkpoint retained for a later retry.'
+          elif [[ "$status" != 0 ]]; then
+            exit "$status"
+          fi
+      - name: Upload dynamic master report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: master-sync-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/tour-batch/last-run.json
+            artifacts/tour-batch/run.log
+          if-no-files-found: warn

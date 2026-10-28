@@ -10,7 +10,9 @@
     "sync:master": "tsx scripts/sync-master-catalog.ts",
     "batch-tour-enrichment": "tsx src/jobs/enrichment.ts",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/node/*.test.ts"
+    "test": "tsx --test tests/node/*.test.ts",
+    "sync:daily-master": "tsx scripts/sync-daily-master.ts",
+    "batch:report": "tsx scripts/report-tour-batch.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.118.0",
@@ -21,6 +23,7 @@
     "@electric-sql/pglite": "0.5.12",
     "@types/node": "22.20.5",
     "tsx": "4.23.15",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "yaml": "2.9.1"
   }
 }

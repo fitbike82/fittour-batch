@@ -48,3 +48,6 @@ supabase/*
 !supabase/migrations/
 supabase/migrations/*
 !supabase/migrations/*_batch_tour_enrichment.sql
+
+!supabase/migrations/*_daily_tour_relay.sql
+!docs/task-032.md

@@ -421,11 +421,13 @@ def enriched_count(completed, places=None):
 
 def telegram_report(report):
     total = report.get('total_enriched_count')
-    progress = f'{total / 8372 * 100:.1f}' if total is not None else '미확인'
+    population = report.get('master_total_count')
+    population_label = f'{population:,}' if population is not None else '미확인'
+    progress = f'{total / population * 100:.1f}' if total is not None and population else '미확인'
     return '\n'.join([
         '🔔 [FitTour TourAPI API별 수집 배치 보고]',
         f"• 실행 결과: {'실패' if report.get('exception_type') else '일부 실패' if report.get('failures') else '공사 쿼터 회복 대기' if report.get('quota_stopped') else 'API별 예산 대기' if report.get('local_budget_wait') else '성공'}",
-        f"• 누적 보강 완료: {total if total is not None else '미확인'} / 8,372곳 ({progress}%)",
+        f"• 누적 보강 완료: {total if total is not None else '미확인'} / {population_label}곳 ({progress}%)",
         f"• 이번 실행 전체 완료: {report.get('processed_count', 0)}곳 / 부분 저장: {report.get('partial_saved_count', 0)}곳",
         f"• 이번 실행 이미지 외 정보 완료(전체 완료 포함): {report.get('non_image_complete_count', 0)}곳",
         f"• 신규 저장 시작(전체 완료와 다름): {report.get('actual_newly_inserted_count', '미확인')}곳",
@@ -489,6 +491,7 @@ def _run_batch(argv, report, context):
         raise RuntimeError("Missing server-side TourAPI/Supabase environment configuration")
     db = Database(url, db_key)
     context['db'] = db
+    report['master_total_count'] = db.count('places')
     for table in ('place_images', 'place_barrier_free'):
         try:
             context[table] = db.count(table)
@@ -669,6 +672,10 @@ def main(argv=None):
             except Exception:
                 pass
         if db:
+            try:
+                report['master_total_count'] = db.count('places')
+            except Exception:
+                report['master_total_count'] = None
             try:
                 after = db.completed()
                 report['total_enriched_count'] = enriched_count(after, context.get('catalog'))

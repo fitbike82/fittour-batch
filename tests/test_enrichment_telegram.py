@@ -12,7 +12,7 @@ from scripts import sync_tour_enrichment_full as batch
 
 class TelegramReportTests(unittest.TestCase):
     def setUp(self):
-        self.report = dict(processed_count=12, total_enriched_count=4186,
+        self.report = dict(processed_count=12, total_enriched_count=6000, master_total_count=12000,
                            day_calls={'KorService2': 100, 'KorWithService2': 80},
                            images_count=30, barrier_count=4, status='정상 완료 (다음 배치 대기)')
 
@@ -26,9 +26,16 @@ class TelegramReportTests(unittest.TestCase):
         self.assertEqual(post.call_args.args[0], 'https://api.telegram.org/bottest-token/sendMessage')
         body = post.call_args.kwargs['json']
         self.assertEqual(body['chat_id'], 'test-chat')
-        for text in ('4186 / 8,372', '(50.0%)', '전체 완료: 12곳', 'API'):
+        for text in ('6000 / 12,000', '(50.0%)', '전체 완료: 12곳', 'API'):
             self.assertIn(text, body['text'])
         self.assertNotIn('parse_mode', body)
+
+    def test_missing_or_zero_population_never_uses_a_fixed_denominator(self):
+        for population in (None, 0):
+            report = dict(self.report, master_total_count=population)
+            message = batch.telegram_report(report)
+            self.assertIn('\ubbf8\ud655\uc778', message)
+            self.assertNotIn('50.0%', message)
 
     @patch.dict(os.environ, {}, clear=True)
     @patch.object(batch.requests, 'post')

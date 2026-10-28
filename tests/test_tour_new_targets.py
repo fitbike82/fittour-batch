@@ -23,6 +23,7 @@ class NewTargetTests(unittest.TestCase):
 
     def test_report_counts_only_new_ids_written_by_this_execution(self):
         db = Mock()
+        db.count.return_value = 12000
         db.completed.return_value = {('old', 'KorService2', 'detailCommon2', ''),
                                      ('new', 'KorService2', 'detailCommon2', ''),
                                      ('other-job', 'KorService2', 'detailCommon2', '')}
@@ -38,4 +39,5 @@ class NewTargetTests(unittest.TestCase):
             batch.main([])
             report = send.call_args.args[0]
             self.assertEqual(report['actual_newly_inserted_count'], 1)
+            self.assertEqual(report['master_total_count'], 12000)
             self.assertEqual(report['processed_count'], 0)  # Distinct from fully enriched places.
