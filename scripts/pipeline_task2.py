@@ -12,6 +12,11 @@ import time
 from collections import deque
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs
+try:
+    from smart_search import smart_search_pages, has_search_credentials
+except ModuleNotFoundError:
+    from scripts.smart_search import smart_search_pages, has_search_credentials
+
 import requests
 try:
     from gemini_key_pool import KeyPool, discover_keys, mask_keys
@@ -95,12 +100,10 @@ def read_blog(session,url):
     if sponsored(text): raise ValueError('Sponsored article')
     return text[:14000]
 
-def search_kakao_blogs(session,key,title,size=10):
+def search_kakao_blogs(session,key,title,size=10,*,sido=None,sigungu=None):
     reviews,seen,dropped=[],set(),0
-    for suffix in ('내돈내산','솔직 후기'):
-        response=session.get('https://dapi.kakao.com/v2/search/blog',headers={'Authorization':f'KakaoAK {key}'},params={'query':f'{title} {suffix}','size':size,'sort':'accuracy'},timeout=15)
-        response.raise_for_status()
-        for doc in response.json().get('documents',[]):
+    for query, documents in smart_search_pages(session, key, title, ('내돈내산','솔직 후기'), size=size, sido=sido, sigungu=sigungu):
+        for doc in documents:
             url=doc.get('url','')
             if url in seen: continue
             seen.add(url)
@@ -112,7 +115,7 @@ def search_kakao_blogs(session,key,title,size=10):
             except (requests.RequestException,ValueError):
                 dropped+=1
                 continue
-            reviews.append({'source_id':len(reviews)+1,'title':heading,'url':url,'text':body,'query':f'{title} {suffix}'})
+            reviews.append({'source_id':len(reviews)+1,'title':heading,'url':url,'text':body,'query':query})
             if len(reviews)>=5: break
         if len(reviews)>=2: break
     return reviews,dropped
@@ -179,7 +182,7 @@ def mask_sensitive(text: str) -> str:
     # Also mask known secrets from environment variables if present
     for env_var in ('GEMINI_API_KEY', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_KEY',
                     'KAKAO_REST_API_KEY', 'KAKAO_API_KEY', 'TELEGRAM_BOT_TOKEN', 'TOUR_API_KEY',
-                    'TOUR_API_DECODING_KEY'):
+                    'TOUR_API_DECODING_KEY', 'NAVER_CLIENT_ID', 'NAVER_CLIENT_SECRET'):
         val = os.getenv(env_var)
         if val and len(val) >= 5 and val in text:
             text = text.replace(val, '***')
@@ -500,7 +503,7 @@ def main():
         print(f"Saved {len(report['results'])} validated summaries")
         return 0
     kakao=os.getenv('KAKAO_REST_API_KEY') or os.getenv('KAKAO_API_KEY')
-    if not kakao or not discover_keys(): parser.error('Kakao / Gemini configuration missing')
+    if not has_search_credentials(kakao) or not discover_keys(): parser.error('Search / Gemini configuration missing')
     session=requests.Session()
     session.headers['User-Agent']='LocalTripAI/1.0'
     gemini=Gemini(session,model=args.model)

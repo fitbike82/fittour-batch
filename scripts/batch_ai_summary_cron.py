@@ -11,6 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
+try:
+    from smart_search import smart_search_pages, has_search_credentials
+except ModuleNotFoundError:
+    from scripts.smart_search import smart_search_pages, has_search_credentials
+
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -96,18 +101,14 @@ def read_article(session, url):
     return review_excerpt(text)
 
 
-def search_reviews(session, key, title):
+def search_reviews(session, key, title, *, sido=None, sigungu=None):
     reviews, seen = [], set()
     diagnostics = {'queries': 0, 'documents': 0, 'article_errors': {}, 'filtered': {}}
     session.review_diagnostics = diagnostics
     unavailable = 0
-    for suffix in ('내돈내산', '솔직 후기', '방문 후기'):
-        response = session.get('https://dapi.kakao.com/v2/search/blog',
-            headers={'Authorization': f'KakaoAK {key}'},
-            params={'query': f'{title} {suffix}', 'size': 10, 'sort': 'accuracy'}, timeout=15)
-        response.raise_for_status()
+    for query, documents in smart_search_pages(session, key, title, ('내돈내산', '솔직 후기', '방문 후기'), sido=sido, sigungu=sigungu):
         diagnostics['queries'] += 1
-        for doc in response.json().get('documents', []):
+        for doc in documents:
             diagnostics['documents'] += 1
             url = doc.get('url', '')
             if not url or url in seen:
@@ -133,7 +134,7 @@ def search_reviews(session, key, title):
                 diagnostics['filtered'][reason] = diagnostics['filtered'].get(reason, 0) + 1
                 continue
             reviews.append({'source_id': len(reviews) + 1, 'title': heading,
-                            'url': url, 'query': f'{title} {suffix}', 'text': text})
+                            'url': url, 'query': query, 'text': text})
             if len(reviews) == 5:
                 break
         if len(reviews) >= 2:
@@ -382,7 +383,7 @@ def main():
     try:
         key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
         kakao = os.getenv('KAKAO_REST_API_KEY') or os.getenv('KAKAO_API_KEY')
-        if not all((os.getenv('SUPABASE_URL'), key, kakao, discover_keys())):
+        if not all((os.getenv('SUPABASE_URL'), key, has_search_credentials(kakao), discover_keys())):
             raise ValueError('Missing API configuration')
         db = create_client(os.environ['SUPABASE_URL'], key,
                            options=ClientOptions(postgrest_client_timeout=15))

@@ -51,3 +51,4 @@ supabase/migrations/*
 
 !supabase/migrations/*_daily_tour_relay.sql
 !docs/task-032.md
+!docs/smart-search.md
