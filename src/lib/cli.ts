@@ -69,8 +69,11 @@ export async function cli(job: (store: SupabaseStore, api: TourApi, opt: Options
     api = new TourApi(configured.tourKey, new SharedBudget(configured.db, configured.tourKey, budget, opt.dailyLimit, opt.alreadyUsed));
     const result = await job(store, api, opt);
     report.result = result;
-    report.status = result.failed ? 'failed' : result.deferred ? 'deferred' : 'completed';
-    process.exitCode = result.failed ? 1 : result.deferred ? 2 : 0;
+    // Enrichment record failures are accounted for in result.failed; a drained
+    // queue is still a successful batch. Fatal errors take the catch path.
+    const failed = name !== 'enrichment' && !!result.failed;
+    report.status = failed ? 'failed' : result.deferred ? 'deferred' : 'completed';
+    process.exitCode = failed ? 1 : result.deferred ? 2 : 0;
   } catch (error) {
     report.code = error instanceof BatchError ? error.code : 'unexpected_error';
     console.error(JSON.stringify({ event: 'batch_stopped', code: report.code }));

@@ -144,6 +144,31 @@ test('bad detail fails only its place and quota deferral releases every remainin
   assert.equal(deferred.released.length, 20); assert.equal(deferred.saved.length, 0);
 });
 
+test('100-place batch drains after an unexpected error for 1214860', async () => {
+  const store = new MemoryStore([place('1214860'), ...Array.from({ length: 104 }, (_, i) => place(String(i + 1)))]);
+  const events: object[] = [];
+  const result = await enrich(store, { async page(_endpoint, params) {
+    if (params.contentId === '1214860') throw new TypeError('unexpected provider structure');
+    return ok([{ contentid: params.contentId, overview: 'valid\0text' }]);
+  } }, { limit: 100, retryFailed: false, maxSeconds: 60, categories: [39] }, event => events.push(event));
+  assert.deepEqual(result, { claimed: 100, completed: 99, failed: 1, deferred: false });
+  assert.deepEqual(store.released, [{ place: place('1214860'), failed: true }]);
+  assert.equal(store.queue.length, 5);
+  assert.ok(store.saved.every(row => row.details.overview === 'validtext'));
+  assert.ok(events.some(event => JSON.stringify(event) === JSON.stringify({ event: 'enrichment_error',
+    content_id: '1214860', code: 'unexpected_error', stage: 'fetch', error_type: 'TypeError' })));
+});
+
+test('null detail is isolated and subsequent claim pages continue', async () => {
+  const store = new MemoryStore(Array.from({ length: 101 }, (_, i) => place(String(i + 1))));
+  const result = await enrich(store, { async page(_endpoint, params) {
+    return params.contentId === '1' ? ok([null as unknown as Item]) : ok([{ contentid: params.contentId }]);
+  } }, { limit: 101, retryFailed: false, maxSeconds: 60, categories: [39] }, quiet);
+  assert.deepEqual(result, { claimed: 101, completed: 100, failed: 1, deferred: false });
+  assert.equal(store.saved.at(-1)?.place.content_id, '101');
+  assert.deepEqual(store.released, [{ place: place('1'), failed: true }]);
+});
+
 import { SupabaseStore } from '../../src/lib/store.js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 test('database data rejection isolates one row while schema errors stop immediately', async () => {

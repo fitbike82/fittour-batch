@@ -2,8 +2,16 @@ import pLimit from 'p-limit';
 import { BatchError, QuotaStop } from '../lib/budget.js';
 import { cli, isMain } from '../lib/cli.js';
 import { CONTENT_TYPES, courseStops, sanitizeIntro, text } from '../lib/mapping.js';
-import { allPages, type TourSource } from '../lib/tour-api.js';
+import { allPages, type Page, type TourSource } from '../lib/tour-api.js';
 import type { Store } from '../lib/store.js';
+
+function validateDetail(page: Page): void {
+  if (!page || !Array.isArray(page.items) || page.items.length !== 1 || page.total !== 1) {
+    throw new BatchError('missing_or_ambiguous_detail');
+  }
+  const item = page.items[0];
+  if (!item || typeof item !== 'object' || Array.isArray(item)) throw new BatchError('invalid_detail_item');
+}
 
 export async function enrich(store: Store, api: TourSource,
   options: { limit: number; retryFailed: boolean; maxSeconds: number; categories?: number[] } = { limit: 500000, retryFailed: false, maxSeconds: 7200 },
@@ -30,6 +38,7 @@ export async function enrich(store: Store, api: TourSource,
           await release(false);
           return;
         }
+        let stage = 'fetch';
         try {
           const params = { contentId: place.content_id, contentTypeId: place.content_type_id };
           // A separate HTTP limiter inside TourApi caps actual requests at 10,
@@ -46,21 +55,24 @@ export async function enrich(store: Store, api: TourSource,
           const common = (payloads[0] as PromiseFulfilledResult<Awaited<ReturnType<TourSource['page']>>>).value;
           const intro = (payloads[1] as PromiseFulfilledResult<Awaited<ReturnType<TourSource['page']>>>).value;
           const stops = (payloads[2] as PromiseFulfilledResult<Awaited<ReturnType<typeof allPages>>>).value;
-          if (common.items.length !== 1 || intro.items.length !== 1 || common.total !== 1 || intro.total !== 1) {
-            throw new BatchError('missing_or_ambiguous_detail');
-          }
+          stage = 'validate';
+          validateDetail(common);
+          validateDetail(intro);
           if (String(common.items[0].contentid) !== place.content_id ||
               (intro.items[0].contentid != null && String(intro.items[0].contentid) !== place.content_id)) {
             throw new BatchError('detail_identity_mismatch');
           }
+          stage = 'map';
           const detail = sanitizeIntro(intro.items[0]);
           const course = place.content_type_id === '25' ? {
             title: text(common.items[0].title) ?? place.title,
             distance: text(detail.distance), taketime: text(detail.taketime), schedule: text(detail.schedule),
           } : null;
           if (course && !stops.length) throw new BatchError('empty_course');
-          const saved = await store.finish(place, { overview: text(common.items[0].overview), intro: detail,
-            course, stops: course ? courseStops(stops) : [] });
+          const details = { overview: text(common.items[0].overview), intro: detail,
+            course, stops: course ? courseStops(stops) : [] };
+          stage = 'finish';
+          const saved = await store.finish(place, details);
           if (!saved) throw new BatchError('claim_expired_or_source_changed');
           counts.completed++;
         } catch (error) {
@@ -70,14 +82,15 @@ export async function enrich(store: Store, api: TourSource,
           } else {
             const code = error instanceof BatchError ? error.code : 'unexpected_error';
             // Credentials/schema/database outages stop the run; individual bad payloads do not.
-            if (/^(database_|retryable_|provider_(20|30|31|32)|http_40[13]|claim_expired)/.test(code) || !(error instanceof BatchError)) {
+            if (/^(database_|retryable_|provider_(20|30|31|32)|http_40[13]|claim_expired)/.test(code)) {
               fatal ??= error;
               await release(false);
             } else {
               counts.failed++;
               await release(true);
             }
-            log({ event: 'enrichment_error', content_id: place.content_id, code });
+            log({ event: 'enrichment_error', content_id: place.content_id, code, stage,
+              error_type: error instanceof Error ? error.name : typeof error });
           }
         }
       })));
