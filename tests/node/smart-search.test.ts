@@ -14,13 +14,20 @@ test('exhausts regional/title queries on Naver before Kakao and normalizes respo
   const adapters = createSearchAdapters(env, async (input, init) => {
     const url = new URL(String(input));
     calls.push({ url, headers: new Headers(init?.headers) });
-    return Response.json(url.hostname === 'openapi.naver.com' ? { items: [] }
+    return Response.json(url.hostname === 'naverapihub.apigw.ntruss.com' ? { items: [] }
       : { documents: [{ title: '맛집', url: 'https://example.com/post', contents: '후기', datetime: '2026' }] });
   });
   const result = await searchPlace({ title: '(주) 맛집 본점', sigungu: '강남구' }, adapters);
   assert.equal(result.provider, 'kakao');
   assert.deepEqual(calls.map(c => c.url.searchParams.get('query')), ['강남 맛집', '맛집', '강남 맛집']);
-  assert.equal(calls[0].headers.get('X-Naver-Client-Secret'), 'secret');
+  assert.equal(calls[0].url.origin + calls[0].url.pathname, 'https://naverapihub.apigw.ntruss.com/search/v1/blog');
+  assert.equal(calls[0].headers.get('X-NCP-APIGW-API-KEY-ID'), 'id');
+  assert.equal(calls[0].headers.get('X-NCP-APIGW-API-KEY'), 'secret');
+  assert.equal(calls[0].headers.has('X-Naver-Client-Secret'), false);
+  assert.equal(calls[0].url.searchParams.get('display'), '5');
+  assert.equal(calls[0].url.searchParams.get('format'), 'json');
+  assert.equal(calls[2].url.searchParams.get('size'), '10');
+  assert.equal(calls[2].url.searchParams.has('format'), false);
   assert.equal(calls[2].headers.get('Authorization'), 'KakaoAK key');
   assert.equal(calls[0].url.searchParams.get('sort'), 'sim');
   assert.equal(calls[2].url.searchParams.get('sort'), 'accuracy');
@@ -35,6 +42,7 @@ test('Naver success short circuits and maps link, description and postdate', asy
   }));
   assert.equal(calls, 1);
   assert.equal(result.provider, 'naver');
+  assert.equal(result.documents[0].title, '맛집');
   assert.equal(result.documents[0].datetime, '20261029');
 });
 

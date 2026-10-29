@@ -23,7 +23,8 @@ const result = await searchPlace({ title: '(주) 맛집 [본점]', sigungu: '강
 ```
 
 `SearchAdapter` 인터페이스를 구현해 `searchPlace(params, adapters)`에 전달하면 다른
-검색 공급자도 추가할 수 있다. 기본 어댑터는 요청당 15초 제한, 최대 10개 결과를 사용한다.
+검색 공급자도 추가할 수 있다. 기본 어댑터는 요청당 15초 제한으로 네이버 최대 5개,
+카카오 최대 10개 결과를 사용한다.
 네이버의 지역 포함 쿼리 → 상호명 단독 쿼리 → 카카오의 같은 후보 순으로 시도하며,
 첫 비어 있지 않은 결과를 반환한다. 공급자 요청 오류가 나면 그 공급자의 나머지 후보를
 생략하고 다음 공급자로 이동한다. 모두 실패하면 `all_search_providers_failed`를 던진다.
@@ -41,8 +42,13 @@ const result = await searchPlace({ title: '(주) 맛집 [본점]', sigungu: '강
 
 정제 대상은 괄호 안 내용, `주식회사`, `직영점`, 숫자 호점, `본점`, 특수문자다.
 `강남점` 같은 임의의 지점명은 실제 상호명과 구별할 근거가 없으므로 일괄 삭제하지 않는다.
-정제 후 빈 상호명은 검색하지 않는다. HTML 제목은 검색 결과에서 그대로 보존하고,
+정제 후 빈 상호명은 검색하지 않는다. 네이버 제목·설명의 HTML 태그는 어댑터에서 제거하고,
 기존 원문 처리 단계에서 정제한다. 날짜는 공급자의 원본 문자열을 보존한다.
 
-API 계약 참고: [네이버 블로그 검색](https://developers.naver.com/docs/serviceapi/search/blog/blog.md),
+API 계약 참고: [네이버 블로그 검색](https://api.ncloud-docs.com/docs/naver-api-hub-search-blog),
 [카카오 블로그 검색](https://developers.kakao.com/docs/latest/ko/daum-search/dev-guide#search-blog).
+
+네이버 요청은 `https://naverapihub.apigw.ntruss.com/search/v1/blog`와
+`X-NCP-APIGW-API-KEY-ID`, `X-NCP-APIGW-API-KEY` 헤더를 사용한다.
+환경변수 이름은 그대로이며 NCP API HUB에서 발급받은 인증값을 설정한다.
+파라미터는 `query`, `display=5`, `sort=sim`, `format=json`이다.

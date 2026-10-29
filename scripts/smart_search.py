@@ -45,8 +45,8 @@ def smart_search_pages(session, kakao_key, title, suffixes, size=10, sido=None, 
     client_id = os.getenv('NAVER_CLIENT_ID', '').strip()
     secret = os.getenv('NAVER_CLIENT_SECRET', '').strip()
     if client_id and secret:
-        providers.append(('naver', 'https://openapi.naver.com/v1/search/blog.json',
-                          {'X-Naver-Client-Id': client_id, 'X-Naver-Client-Secret': secret}))
+        providers.append(('naver', 'https://naverapihub.apigw.ntruss.com/search/v1/blog',
+                          {'X-NCP-APIGW-API-KEY-ID': client_id, 'X-NCP-APIGW-API-KEY': secret}))
     key = (kakao_key or '').strip() or os.getenv('KAKAO_REST_API_KEY', '').strip() or os.getenv('KAKAO_API_KEY', '').strip()
     if key:
         providers.append(('kakao', 'https://dapi.kakao.com/v2/search/blog', {'Authorization': f'KakaoAK {key}'}))
@@ -59,8 +59,10 @@ def smart_search_pages(session, kakao_key, title, suffixes, size=10, sido=None, 
             for base in bases:
                 for suffix in suffixes:
                     query = f'{base} {suffix}'.strip()
-                    params = {'query': query, 'display' if provider == 'naver' else 'size': size,
+                    params = {'query': query, 'display' if provider == 'naver' else 'size': 5 if provider == 'naver' else size,
                               'sort': 'sim' if provider == 'naver' else 'accuracy'}
+                    if provider == 'naver':
+                        params['format'] = 'json'
                     response = session.get(endpoint, headers=headers, params=params, timeout=15)
                     response.raise_for_status()
                     payload = response.json()
@@ -68,8 +70,9 @@ def smart_search_pages(session, kakao_key, title, suffixes, size=10, sido=None, 
                     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
                         raise ValueError('invalid_search_response')
                     if provider == 'naver':
-                        rows = [{'title': row.get('title', ''), 'url': row.get('link', ''),
-                                 'contents': row.get('description', ''), 'datetime': row.get('postdate', '')} for row in rows]
+                        rows = [{'title': re.sub(r'<[^>]*>?', '', row.get('title') or ''), 'url': row.get('link', ''),
+                                 'contents': re.sub(r'<[^>]*>?', '', row.get('description') or ''),
+                                 'datetime': row.get('postdate', '')} for row in rows]
                     yield query, rows
         except (requests.RequestException, ValueError) as error:
             last_error = error

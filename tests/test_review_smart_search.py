@@ -16,13 +16,16 @@ class SmartSearchTests(unittest.TestCase):
     @patch.dict(os.environ, {'NAVER_CLIENT_ID': 'id', 'NAVER_CLIENT_SECRET': 'secret'}, clear=True)
     def test_naver_first_and_normalized_documents(self):
         session = Mock()
-        session.get.return_value.json.return_value = {'items': [{'title': 'title', 'link': 'url', 'description': 'body', 'postdate': '20261029'}]}
+        session.get.return_value.json.return_value = {'items': [{'title': '<b>title</b>', 'link': 'url', 'description': '<b>body</b>', 'postdate': '20261029'}]}
         pages = smart_search_pages(session, 'key', '맛집', ['후기'])
         query, docs = next(pages)
         self.assertEqual(query, '맛집 후기')
         self.assertEqual(docs[0]['url'], 'url')
         self.assertEqual(docs[0]['contents'], 'body')
-        self.assertIn('openapi.naver.com', session.get.call_args.args[0])
+        self.assertEqual(docs[0]['title'], 'title')
+        self.assertEqual(session.get.call_args.args[0], 'https://naverapihub.apigw.ntruss.com/search/v1/blog')
+        self.assertEqual(session.get.call_args.kwargs['headers'], {'X-NCP-APIGW-API-KEY-ID': 'id', 'X-NCP-APIGW-API-KEY': 'secret'})
+        self.assertEqual(session.get.call_args.kwargs['params'], {'query': '맛집 후기', 'display': 5, 'sort': 'sim', 'format': 'json'})
         self.assertTrue(has_search_credentials())
 
     @patch.dict(os.environ, {'NAVER_CLIENT_ID': 'id', 'NAVER_CLIENT_SECRET': 'secret'}, clear=True)

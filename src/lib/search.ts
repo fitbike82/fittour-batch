@@ -14,11 +14,12 @@ function adapter(provider: Provider, headers: Record<string, string>, fetcher: t
   return {
     name: provider,
     async search(query) {
-      const url = new URL(provider === 'naver' ? 'https://openapi.naver.com/v1/search/blog.json'
+      const url = new URL(provider === 'naver' ? 'https://naverapihub.apigw.ntruss.com/search/v1/blog'
         : 'https://dapi.kakao.com/v2/search/blog');
       url.searchParams.set('query', query);
-      url.searchParams.set(provider === 'naver' ? 'display' : 'size', '10');
+      url.searchParams.set(provider === 'naver' ? 'display' : 'size', provider === 'naver' ? '5' : '10');
       url.searchParams.set('sort', provider === 'naver' ? 'sim' : 'accuracy');
+      if (provider === 'naver') url.searchParams.set('format', 'json');
       let response: Response;
       try { response = await fetcher(url, { headers, signal: AbortSignal.timeout(15_000) }); }
       catch { throw new SearchError('transport_error'); }
@@ -39,7 +40,9 @@ function adapter(provider: Provider, headers: Record<string, string>, fetcher: t
         let parsed: URL;
         try { parsed = new URL(url); } catch { throw new SearchError('invalid_document_url'); }
         if (!['http:', 'https:'].includes(parsed.protocol)) throw new SearchError('invalid_document_url');
-        return { title, url, contents, datetime: typeof datetime === 'string' ? datetime : '' };
+        return { title: provider === 'naver' ? title.replace(/<[^>]*>?/g, '') : title,
+          url, contents: provider === 'naver' ? contents.replace(/<[^>]*>?/g, '') : contents,
+          datetime: typeof datetime === 'string' ? datetime : '' };
       });
     },
   };
@@ -50,7 +53,7 @@ export function createSearchAdapters(env: NodeJS.ProcessEnv = process.env, fetch
   const adapters: SearchAdapter[] = [];
   const id = env.NAVER_CLIENT_ID?.trim(), secret = env.NAVER_CLIENT_SECRET?.trim();
   const kakao = env.KAKAO_REST_API_KEY?.trim() || env.KAKAO_API_KEY?.trim();
-  if (id && secret) adapters.push(adapter('naver', { 'X-Naver-Client-Id': id, 'X-Naver-Client-Secret': secret }, fetcher));
+  if (id && secret) adapters.push(adapter('naver', { 'X-NCP-APIGW-API-KEY-ID': id, 'X-NCP-APIGW-API-KEY': secret }, fetcher));
   if (kakao) adapters.push(adapter('kakao', { Authorization: `KakaoAK ${kakao}` }, fetcher));
   return adapters;
 }
