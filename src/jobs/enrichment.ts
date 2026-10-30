@@ -95,7 +95,7 @@ export async function enrich(store: Store, api: TourSource,
           }
         }
       })));
-      log({ event: 'enrichment_progress', category, ...counts, ...(store.snapshot ? { database: await store.snapshot() } : {}) });
+      log({ event: 'enrichment_progress', category, ...counts, api_calls: api.calls ?? 0 });
     }
   }
   if (fatal) throw fatal;

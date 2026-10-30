@@ -3,7 +3,10 @@ import { BatchError, QuotaStop, type Budget } from './budget.js';
 
 export type Item = Record<string, unknown>;
 export type Page = { items: Item[]; total: number };
-export interface TourSource { page(endpoint: string, params: Record<string, string | number>): Promise<Page>; }
+export interface TourSource {
+  readonly calls?: number;
+  page(endpoint: string, params: Record<string, string | number>): Promise<Page>;
+}
 const wait = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 export class TourApi implements TourSource {

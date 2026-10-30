@@ -6,6 +6,7 @@ import { database, keyId, SharedBudget, SupabaseStore } from './store.js';
 import { TourApi } from './tour-api.js';
 import { CONTENT_TYPES } from './mapping.js';
 import { saveReport, type RunReport } from './report.js';
+import { optionalSnapshot } from './snapshot.js';
 
 export const isMain = (url: string) => !!process.argv[1] && pathToFileURL(process.argv[1]).href === url;
 export function options(args = process.argv.slice(2)) {
@@ -63,8 +64,7 @@ export async function cli(job: (store: SupabaseStore, api: TourApi, opt: Options
     store = configured.store;
     const { data, error } = await configured.db.rpc('batch_tour_relay_preflight');
     if (error || data !== true) throw new BatchError('batch_tour_relay_migration_required');
-    report.before = await store.snapshot();
-    console.log(JSON.stringify({ event: 'batch_snapshot', phase: 'before', database: report.before }));
+    report.before = await optionalSnapshot(store, 'before');
     budget = new DailyBudget(decodeURIComponent(configured.tourKey.trim()), opt.dailyLimit, undefined, opt.alreadyUsed);
     api = new TourApi(configured.tourKey, new SharedBudget(configured.db, configured.tourKey, budget, opt.dailyLimit, opt.alreadyUsed));
     const result = await job(store, api, opt);
@@ -81,12 +81,7 @@ export async function cli(job: (store: SupabaseStore, api: TourApi, opt: Options
   } finally {
     budget?.close();
     if (opt) {
-      if (store) {
-        try { report.after = await store.snapshot(); }
-        catch (error) {
-          report.status = 'failed'; report.code ??= error instanceof BatchError ? error.code : 'snapshot_failed'; process.exitCode = 1;
-        }
-      }
+      if (store) report.after = await optionalSnapshot(store, 'after');
       const seconds = (performance.now() - started) / 1000;
       report.api_calls = api?.calls ?? 0; report.elapsed_seconds = Math.round(seconds);
       report.requests_per_second = Number((report.api_calls / Math.max(seconds, 0.001)).toFixed(2));
