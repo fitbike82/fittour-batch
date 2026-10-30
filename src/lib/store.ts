@@ -57,11 +57,12 @@ export class SupabaseStore implements Store {
       skipped: a.skipped + b.skipped, deactivated: a.deactivated + b.deactivated };
   }
   async claim(limit: number, after: string, retryFailed: boolean, categories?: number[]) {
-    const { data, error } = await this.db.rpc(categories ? 'claim_batch_tour_places_filtered' : 'claim_batch_tour_places', {
+    const { data, error, status } = await this.db.rpc(categories ? 'claim_batch_tour_places_filtered' : 'claim_batch_tour_places', {
       p_limit: limit, p_after: after, p_retry_failed: retryFailed,
       ...(categories ? { p_categories: categories.map(String) } : {}),
     });
-    if (error) throw new BatchError(`database_claim_${error.code}`);
+    if (error) throw new BatchError(`database_claim_${error.code ||
+      (status === 0 || [502, 503, 504].includes(status) ? 'transport' : 'unknown')}`);
     return data as Place[];
   }
   async finish(place: Place, details: Details) {

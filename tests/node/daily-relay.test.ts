@@ -109,6 +109,12 @@ test('relay migration: dynamic stats, category filtering, flags, checkpoint and 
     await db.exec(read('supabase/migrations/20261028074529_batch_tour_enrichment.sql'));
     const migration = read('supabase/migrations/20261028084311_daily_tour_relay.sql');
     await db.exec(migration); await db.exec(migration);
+    const indexes = read('supabase/migrations/20261030051825_claim_queue_indexes.sql');
+    await db.exec(indexes); await db.exec(indexes);
+    const index = await db.query<{ indexdef: string }>(
+      "select indexdef from pg_indexes where indexname='places_enrich_claim_category_id_idx'");
+    assert.match(index.rows[0].indexdef, /content_type_id, content_id/);
+    assert.match(index.rows[0].indexdef, /IS DISTINCT FROM 'completed'/);
     await db.exec(`insert into public.places(content_id,content_type_id,title,modified_time,is_active)
       values('1','12','A','20261028120000',true),('2','25','Course','20261028120000',true),('3','39','Food','20261028120000',true),('4','32','Inactive','20261028120000',false);
       set role service_role;`);

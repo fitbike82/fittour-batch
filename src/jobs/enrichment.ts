@@ -3,7 +3,13 @@ import { BatchError, QuotaStop } from '../lib/budget.js';
 import { cli, isMain } from '../lib/cli.js';
 import { CONTENT_TYPES, courseStops, sanitizeIntro, text } from '../lib/mapping.js';
 import { allPages, type Page, type TourSource } from '../lib/tour-api.js';
-import type { Store } from '../lib/store.js';
+import type { Place, Store } from '../lib/store.js';
+
+const claimRetryDelays = [3000, 7000, 15000];
+const claimErrorCode = (error: unknown): string => error instanceof BatchError ? error.code
+  : error instanceof Error && ['TypeError', 'AbortError', 'TimeoutError'].includes(error.name)
+    ? 'database_claim_transport' : 'unexpected_claim_error';
+const retryableClaim = (code: string) => /^database_claim_(57014|transport|08[A-Z0-9]{3})$/.test(code);
 
 function validateDetail(page: Page): void {
   if (!page || !Array.isArray(page.items) || page.items.length !== 1 || page.total !== 1) {
@@ -15,16 +21,39 @@ function validateDetail(page: Page): void {
 
 export async function enrich(store: Store, api: TourSource,
   options: { limit: number; retryFailed: boolean; maxSeconds: number; categories?: number[] } = { limit: 500000, retryFailed: false, maxSeconds: 7200 },
-  log: (event: object) => void = console.log) {
+  log: (event: object) => void = console.log,
+  sleep: (milliseconds: number) => Promise<void> = ms => new Promise(resolve => setTimeout(resolve, ms))) {
   const counts = { claimed: 0, completed: 0, failed: 0, deferred: false };
   const deadline = Date.now() + options.maxSeconds * 1000;
   const workers = pLimit(10);
   let fatal: unknown;
+  let stopReason: string | undefined;
   for (const category of options.categories ?? CONTENT_TYPES) {
     let after = '';
     while (counts.claimed < options.limit && !counts.deferred && !fatal) {
       if (Date.now() >= deadline) { counts.deferred = true; break; }
-      const places = await store.claim(Math.min(100, options.limit - counts.claimed), after, options.retryFailed, [category]);
+      let places: Place[] | undefined;
+      for (let attempt = 0; attempt <= claimRetryDelays.length; attempt++) {
+        if (Date.now() >= deadline) { counts.deferred = true; break; }
+        try {
+          places = await store.claim(Math.min(100, options.limit - counts.claimed), after, options.retryFailed, [category]);
+          break;
+        } catch (error) {
+          const code = claimErrorCode(error);
+          if (!retryableClaim(code)) throw error;
+          const delay = claimRetryDelays[attempt];
+          if (delay === undefined || Date.now() + delay >= deadline) {
+            counts.deferred = true;
+            stopReason = code;
+            log({ event: 'claim_deferred', category, after, code, attempts: attempt + 1,
+              reason: delay === undefined ? 'retries_exhausted' : 'time_budget', ...counts });
+            break;
+          }
+          log({ event: 'claim_retry', category, after, code, retry: attempt + 1, delay_ms: delay });
+          await sleep(delay);
+        }
+      }
+      if (!places) break;
       if (!places.length) break;
       after = places[places.length - 1].content_id;
       counts.claimed += places.length;
@@ -99,6 +128,6 @@ export async function enrich(store: Store, api: TourSource,
     }
   }
   if (fatal) throw fatal;
-  return counts;
+  return { ...counts, ...(stopReason ? { stop_reason: stopReason } : {}) };
 }
 if (isMain(import.meta.url)) await cli((store, api, options) => enrich(store, api, options));

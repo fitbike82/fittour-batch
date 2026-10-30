@@ -51,5 +51,6 @@ supabase/migrations/*
 
 !supabase/migrations/*_daily_tour_relay.sql
 !supabase/migrations/*_enrichment_finish_isolation.sql
+!supabase/migrations/*_claim_queue_indexes.sql
 !docs/task-032.md
 !docs/smart-search.md

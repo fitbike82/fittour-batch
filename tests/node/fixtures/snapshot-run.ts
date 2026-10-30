@@ -17,6 +17,11 @@ globalThis.fetch = async (input, init) => {
       status: 500, headers: { 'Content-Type': 'application/json' },
     });
   } else if (rpc === 'claim_batch_tour_places_filtered') {
+    if (process.env.TEST_CLAIM_ERROR && saved >= 100) {
+      return new Response(JSON.stringify({ code: '57014', message: 'query canceled' }), {
+        status: 500, headers: { 'Content-Type': 'application/json' },
+      });
+    }
     const params = JSON.parse(String(init?.body));
     data = Array.from({ length: Math.min(params.p_limit, limit - next + 1) }, () => {
       const id = String(next++);
@@ -32,8 +37,9 @@ await cli(async (store, api, opt) => {
     api.calls++;
     return { items: [{ contentid: params.contentId }], total: 1 };
   };
-  const result = await enrich(store, api, opt, event => console.log(JSON.stringify(event)));
+  const result = await enrich(store, api, opt, event => console.log(JSON.stringify(event)),
+    process.env.TEST_CLAIM_ERROR ? async () => {} : undefined);
   if (process.env.TEST_JOB_RESULT === 'fatal') throw new BatchError('database_claim_08006');
-  return { ...result, deferred: process.env.TEST_JOB_RESULT === 'deferred', snapshot_calls_during_job: snapshots };
+  return { ...result, deferred: result.deferred || process.env.TEST_JOB_RESULT === 'deferred', snapshot_calls_during_job: snapshots };
 });
 console.log(JSON.stringify({ event: 'test_totals', snapshots, saved }));
