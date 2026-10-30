@@ -1,5 +1,6 @@
 import { BatchError } from './budget.js';
 import type { Item } from './tour-api.js';
+import type { Details } from './store.js';
 export const CONTENT_TYPES = [12, 14, 15, 25, 28, 32, 38, 39] as const;
 export const text = (value: unknown, max = 100_000): string | null => {
   if (typeof value !== 'string' && typeof value !== 'number') return null;
@@ -13,8 +14,29 @@ export function date8(value: unknown): string | null {
   return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === iso ? date : null;
 }
 export function sanitizeIntro(raw: Item): Item {
+  if (Object.keys(raw).length > 128) throw new BatchError('too_many_intro_fields');
+  for (const [key, value] of Object.entries(raw)) {
+    if (key.length > 128 || (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) ||
+        (typeof value === 'number' && !Number.isFinite(value))) throw new BatchError('invalid_intro_field');
+  }
   return Object.fromEntries(Object.entries(raw).map(([key, value]) => [key,
-    ['eventstartdate', 'eventenddate'].includes(key) ? date8(value) : typeof value === 'string' ? value.replaceAll('\0', '') : value]));
+    ['eventstartdate', 'eventenddate'].includes(key) ? date8(value) : typeof value === 'string' ? text(value, 10_000) : value]));
+}
+
+// Bound text before serialization; reject oversized structures rather than dropping course stops.
+export function sanitizeDetails(details: Details): Details {
+  if (details.stops.length > 500) throw new BatchError('too_many_course_stops');
+  const clean: Details = {
+    overview: text(details.overview, 20_000), intro: sanitizeIntro(details.intro),
+    course: details.course ? { title: text(details.course.title, 255),
+      distance: text(details.course.distance, 1000), taketime: text(details.course.taketime, 1000),
+      schedule: text(details.course.schedule, 10_000) } : null,
+    stops: details.stops.map(stop => ({ subnum: stop.subnum, subcontentid: text(stop.subcontentid, 50),
+      subname: text(stop.subname, 255), subdetailoverview: text(stop.subdetailoverview, 10_000),
+      subdetailimg: text(stop.subdetailimg, 2048) })),
+  };
+  if (Buffer.byteLength(JSON.stringify(clean), 'utf8') > 512 * 1024) throw new BatchError('detail_payload_too_large');
+  return clean;
 }
 export function mapMaster(raw: Item, expectedCategory: number): Item {
   const id = text(raw.contentid);

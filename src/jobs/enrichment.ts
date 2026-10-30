@@ -29,8 +29,8 @@ export async function enrich(store: Store, api: TourSource,
       after = places[places.length - 1].content_id;
       counts.claimed += places.length;
       await Promise.all(places.map(place => workers(async () => {
-        const release = async (failed: boolean) => {
-          try { await store.release(place, failed); }
+        const release = async (failed: boolean, errorCode?: string) => {
+          try { await store.release(place, failed, errorCode); }
           catch (error) { fatal ??= error; }
         };
         if (counts.deferred || fatal || Date.now() >= deadline) {
@@ -81,13 +81,14 @@ export async function enrich(store: Store, api: TourSource,
             await release(false);
           } else {
             const code = error instanceof BatchError ? error.code : 'unexpected_error';
-            // Credentials/schema/database outages stop the run; individual bad payloads do not.
-            if (/^(database_|retryable_|provider_(20|30|31|32)|http_40[13]|claim_expired)/.test(code)) {
+            // Completion failures belong to this place. Claim/fetch infrastructure errors stop the run.
+            const finishError = stage === 'finish' && /^database_/.test(code);
+            if (!finishError && /^(database_|retryable_|provider_(20|30|31|32)|http_40[13]|claim_expired)/.test(code)) {
               fatal ??= error;
               await release(false);
             } else {
               counts.failed++;
-              await release(true);
+              await release(true, code);
             }
             log({ event: 'enrichment_error', content_id: place.content_id, code, stage,
               error_type: error instanceof Error ? error.name : typeof error });

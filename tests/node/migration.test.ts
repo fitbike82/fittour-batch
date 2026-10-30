@@ -15,6 +15,9 @@ test('Postgres migration: claims, atomic course writes, retry, source invalidati
       insert into public.places values('1','25','Course','20261028120000',true),('2','12','Place','20261028120000',true);`);
     await db.exec(migration);
     await db.exec(migration); // Additive migration remains safe to reapply.
+    const isolation = readFileSync(new URL('../../supabase/migrations/20261030021035_enrichment_finish_isolation.sql', import.meta.url), 'utf8');
+    await db.exec(isolation);
+    await db.exec(isolation);
     await db.exec('set role service_role;');
     const claim = await db.query<{ content_id: string; claim_token: string }>("select * from public.claim_batch_tour_places(1,'',false)");
     const token = claim.rows[0].claim_token;
@@ -34,9 +37,19 @@ test('Postgres migration: claims, atomic course writes, retry, source invalidati
     await assert.rejects(finish([{ subnum: 1, subname: 'New' }, { subnum: 1, subname: 'Duplicate' }], nextToken));
     const unchanged = await db.query<{ subname: string }>("select subname from public.tour_course_places order by subnum");
     assert.deepEqual(unchanged.rows.map(r => r.subname), ['First', 'Second']);
-    await db.query('select public.release_batch_tour_place($1,$2,true)', ['1', nextToken]);
+    assert.equal((await db.query<{ ok: boolean }>(
+      'select public.fail_batch_tour_place($1,$2,true,$3) as ok',
+      ['1', token, 'database_complete_54000'])).rows[0].ok, false);
+    assert.equal((await db.query<{ ok: boolean }>(
+      'select public.fail_batch_tour_place($1,$2,true,$3) as ok',
+      ['1', nextToken, 'database_complete_54000'])).rows[0].ok, true);
+    assert.deepEqual((await db.query("select enrich_status,enrichment_error from public.places where content_id='1'")).rows,
+      [{ enrich_status: 'failed', enrichment_error: 'database_complete_54000' }]);
     assert.equal((await db.query("select * from public.claim_batch_tour_places(1,'',false)")).rows.length, 0);
     assert.equal((await db.query("select * from public.claim_batch_tour_places(1,'',true)")).rows.length, 1);
+    await db.exec("update public.places set enrich_status='completed' where content_id='1'");
+    assert.equal((await db.query<{ enrichment_error: string | null }>(
+      "select enrichment_error from public.places where content_id='1'")).rows[0].enrichment_error, null);
     await db.exec("update public.places set enrich_claim_until=now()-interval '1 minute' where content_id='2';");
     const recovered = await db.query<{ content_id: string }>("select * from public.claim_batch_tour_places(1,'',false)");
     assert.equal(recovered.rows[0].content_id, '2');

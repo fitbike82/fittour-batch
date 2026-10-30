@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { BatchError, DailyBudget, QuotaStop, kstDay, type Budget } from '../../src/lib/budget.js';
 import { TourApi, type Item, type TourSource } from '../../src/lib/tour-api.js';
-import { CONTENT_TYPES, courseStops, mapMaster, sanitizeIntro } from '../../src/lib/mapping.js';
+import { CONTENT_TYPES, courseStops, mapMaster, sanitizeIntro, sanitizeDetails } from '../../src/lib/mapping.js';
 import type { Counts, Details, Place, Store } from '../../src/lib/store.js';
 import { syncMaster } from '../../scripts/sync-master-catalog.js';
 import { enrich } from '../../src/jobs/enrichment.js';
@@ -188,15 +188,57 @@ test('database data rejection isolates one row while schema errors stop immediat
   assert.equal(calls, 1);
 });
 
-test('database outage and stale claims release work and fail the run', async () => {
+test('finish database errors fail only the place while stale claims stop the run', async () => {
   const api: TourSource = { async page(_endpoint, params) { return ok([{ contentid: params.contentId }]); } };
   const store = new MemoryStore([place('1')]);
   store.finish = async () => { throw new BatchError('database_complete_08006'); };
-  await assert.rejects(enrich(store, api, undefined, quiet), /database_complete_08006/);
-  assert.equal(store.released[0].failed, false);
+  assert.equal((await enrich(store, api, undefined, quiet)).failed, 1);
+  assert.equal(store.released[0].failed, true);
   const stale = new MemoryStore([place('2')]); stale.finish = async () => false;
   await assert.rejects(enrich(stale, api, undefined, quiet), /claim_expired/);
   assert.equal(stale.released[0].failed, false);
+});
+
+test('finish 54000 for 126010 records its failure and completes the other 99 places', async () => {
+  const queue = [place('126010'), ...Array.from({ length: 99 }, (_, i) => place(String(i + 1)))];
+  const completed: string[] = [], failures: Record<string, unknown>[] = [], events: object[] = [];
+  const db = { async rpc(name: string, params: Record<string, unknown>) {
+    if (name === 'batch_tour_snapshot') return { data: {} };
+    if (name === 'claim_batch_tour_places_filtered') return { data: queue.splice(0, Number(params.p_limit)) };
+    if (name === 'complete_batch_tour_place') {
+      if (params.p_content_id === '126010') return { error: { code: '54000' } };
+      completed.push(String(params.p_content_id)); return { data: true };
+    }
+    assert.equal(name, 'fail_batch_tour_place'); failures.push(params); return { data: true };
+  } } as unknown as SupabaseClient;
+  const store = new SupabaseStore(db, quiet);
+  const result = await enrich(store, { async page(_endpoint, params) {
+    return ok([{ contentid: params.contentId }]);
+  } }, { limit: 100, retryFailed: false, maxSeconds: 60, categories: [12] }, event => events.push(event));
+  assert.deepEqual(result, { claimed: 100, completed: 99, failed: 1, deferred: false });
+  assert.equal(completed.length, 99);
+  assert.deepEqual(failures, [{ p_content_id: '126010', p_token: '126010', p_failed: true,
+    p_error: 'database_complete_54000' }]);
+  assert.ok(events.some(event => JSON.stringify(event).includes('"stage":"finish"')));
+});
+
+test('RPC payload truncates Unicode text and rejects oversized or nested structures before sending', async () => {
+  let payload: Record<string, unknown> = {};
+  const db = { async rpc(_name: string, params: Record<string, unknown>) {
+    payload = params; return { data: true };
+  } } as unknown as SupabaseClient;
+  const store = new SupabaseStore(db, quiet);
+  const details: Details = { overview: '가😀'.repeat(30_000), intro: { info: '가😀'.repeat(20_000) },
+    course: { title: '가'.repeat(300) }, stops: [] };
+  await store.finish(place(), details);
+  assert.equal(Array.from(String(payload.p_overview)).length, 20_000);
+  assert.equal(Array.from(String((payload.p_intro as Item).info)).length, 10_000);
+  assert.equal(String((payload.p_course as Item).title).length, 255);
+  assert.equal(Array.from(details.overview!).length, 60_000);
+  assert.throws(() => sanitizeDetails({ ...details, intro: { nested: { bad: true } } }), /invalid_intro_field/);
+  assert.throws(() => sanitizeDetails({ ...details, intro: Object.fromEntries(
+    Array.from({ length: 128 }, (_, i) => [String(i), '가'.repeat(10_000)])) }), /detail_payload_too_large/);
+  assert.throws(() => sanitizeDetails({ ...details, stops: Array(501).fill({}) }), /too_many_course_stops/);
 });
 
 

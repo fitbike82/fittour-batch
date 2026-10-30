@@ -2,6 +2,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';
 import { BatchError, QuotaStop, kstDay, type Budget } from './budget.js';
 import type { Item } from './tour-api.js';
+import { sanitizeDetails } from './mapping.js';
 export type Counts = { inserted: number; updated: number; skipped: number; deactivated: number };
 export type Place = { content_id: string; content_type_id: string; title: string; claim_token: string };
 export type Details = { overview: string | null; intro: Item; course: Item | null; stops: Item[] };
@@ -12,7 +13,7 @@ export interface Store {
   completeDaily?(day: string): Promise<void>;
   claim(limit: number, after: string, retryFailed: boolean, categories?: number[]): Promise<Place[]>;
   finish(place: Place, details: Details): Promise<boolean>;
-  release(place: Place, failed: boolean): Promise<void>;
+  release(place: Place, failed: boolean, errorCode?: string): Promise<void>;
 }
 export type Snapshot = {
   captured_at: string; day: string; database_total: number; active_total: number;
@@ -64,6 +65,7 @@ export class SupabaseStore implements Store {
     return data as Place[];
   }
   async finish(place: Place, details: Details) {
+    details = sanitizeDetails(details);
     const { data, error } = await this.db.rpc('complete_batch_tour_place', {
       p_content_id: place.content_id, p_token: place.claim_token, p_overview: details.overview,
       p_intro: details.intro, p_course: details.course, p_stops: details.stops,
@@ -71,11 +73,13 @@ export class SupabaseStore implements Store {
     if (error) throw new BatchError(`${recordError(error.code) ? 'detail_rejected' : 'database_complete'}_${error.code}`);
     return data === true;
   }
-  async release(place: Place, failed: boolean) {
-    const { error } = await this.db.rpc('release_batch_tour_place', {
+  async release(place: Place, failed: boolean, errorCode?: string) {
+    const { data, error } = await this.db.rpc(failed && errorCode ? 'fail_batch_tour_place' : 'release_batch_tour_place', {
       p_content_id: place.content_id, p_token: place.claim_token, p_failed: failed,
+      ...(failed && errorCode ? { p_error: errorCode.slice(0, 200) } : {}),
     });
     if (error) throw new BatchError(`database_release_${error.code}`);
+    if (failed && errorCode && data !== true) throw new BatchError('database_release_claim_expired');
   }
 }
 
