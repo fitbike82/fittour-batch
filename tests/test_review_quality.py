@@ -1,9 +1,11 @@
+import os
 import unittest
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from pipeline_task2 import sponsored, validate_summary, search_kakao_blogs, Gemini, sample_places
 
 
+@patch.dict(os.environ, {}, clear=True)
 class QualityTests(unittest.TestCase):
     def test_sponsorship_spacing_and_html_cleaning(self):
         self.assertTrue(sponsored('업체에서 제 공 받 아 작성'))
@@ -22,6 +24,8 @@ class QualityTests(unittest.TestCase):
             reviews, dropped = search_kakao_blogs(session, 'key', '장소')
         self.assertEqual(len(reviews), 3)
         self.assertEqual(dropped, 1)
+        self.assertTrue(all(call.args[0] == 'https://dapi.kakao.com/v2/search/blog'
+                            for call in session.get.call_args_list))
         self.assertEqual([c.kwargs['params']['query'] for c in session.get.call_args_list],
                          ['장소 내돈내산', '장소 솔직 후기'])
 

@@ -7,6 +7,27 @@ from scripts.smart_search import build_smart_queries, has_search_credentials, sm
 
 
 class SmartSearchTests(unittest.TestCase):
+    @patch.dict(os.environ, {}, clear=True)
+    def test_missing_response_and_exhausted_mock_end_cleanly(self):
+        for responses in ([None], []):
+            with self.subTest(responses=responses):
+                session = Mock()
+                session.get.side_effect = responses
+                self.assertEqual(list(smart_search_pages(session, 'key', '맛집', ['후기'])), [])
+
+    @patch.dict(os.environ, {'NAVER_CLIENT_ID': 'id', 'NAVER_CLIENT_SECRET': 'secret'}, clear=True)
+    def test_deduplicated_queries_are_reused_for_each_provider(self):
+        session = Mock()
+        naver, kakao = Mock(), Mock()
+        naver.json.return_value = {'items': []}
+        kakao.json.return_value = {'documents': []}
+        session.get.side_effect = [naver, kakao]
+        pages = list(smart_search_pages(session, 'key', '맛집', ['후기', '후기']))
+        self.assertEqual(pages, [('맛집 후기', []), ('맛집 후기', [])])
+        self.assertEqual([call.args[0] for call in session.get.call_args_list], [
+            'https://naverapihub.apigw.ntruss.com/search/v1/blog',
+            'https://dapi.kakao.com/v2/search/blog'])
+
     def test_query_candidates(self):
         self.assertEqual(build_smart_queries('(주) 맛집 [본점] 2호점', '서울특별시', '강남구'), ['강남 맛집', '맛집'])
         self.assertEqual(build_smart_queries('강남 맛집', sigungu='강남구'), ['강남 맛집'])

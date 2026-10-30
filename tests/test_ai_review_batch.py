@@ -1,8 +1,10 @@
+import os
 import unittest
 from unittest.mock import Mock, patch
 from batch_ai_summary_cron import persist, resume_saved, search_reviews, run, pending_places
 
 
+@patch.dict(os.environ, {}, clear=True)
 class BatchReviewTests(unittest.TestCase):
     def place(self):
         return {'content_id': '1', 'title': '장소', 'modified_time': '20261015000000'}
@@ -15,6 +17,8 @@ class BatchReviewTests(unittest.TestCase):
         with patch('batch_ai_summary_cron.read_article', return_value='본문'):
             reviews = search_reviews(session, 'key', '장소')
         self.assertEqual(len(reviews), 2)
+        self.assertTrue(all(call.args[0] == 'https://dapi.kakao.com/v2/search/blog'
+                            for call in session.get.call_args_list))
         self.assertEqual([c.kwargs['params']['query'] for c in session.get.call_args_list],
                          ['장소 내돈내산', '장소 솔직 후기', '장소 방문 후기'])
 

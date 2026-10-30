@@ -39,24 +39,30 @@ jobs:
       TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
     steps:
       - uses: actions/checkout@v4
+        id: step-1
       - uses: actions/setup-python@v5
+        id: step-2
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements.txt
       - run: python -m pip install -r requirements.txt
+        id: step-3
       - name: Run review batch checks
+        id: run-review-batch-checks
         run: python -m unittest discover -s tests -p 'test*review*.py' -v
       - name: Compute provider quota day
         id: quota-day
         run: echo "day=$(TZ=America/Los_Angeles date +%F)" >> "$GITHUB_OUTPUT"
       - uses: actions/cache/restore@v4
+        id: step-6
         continue-on-error: true
         with:
           path: artifacts/gemini-key-pool/state.json
           key: gemini-quota-v1-${{ steps.quota-day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: gemini-quota-v1-${{ steps.quota-day.outputs.day }}-
       - name: Summarize a bounded batch of queued places
+        id: summarize-a-bounded-batch-of-queued-places
         run: |
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             python scripts/batch_ai_summary_cron.py --limit 50
@@ -64,14 +70,17 @@ jobs:
             python scripts/batch_ai_summary_cron.py --limit "$BATCH_LIMIT"
           fi
       - uses: actions/cache/save@v4
+        id: step-8
         continue-on-error: true
         if: always() && steps.quota-day.outputs.day != '' && hashFiles('artifacts/gemini-key-pool/state.json') != ''
         with:
           path: artifacts/gemini-key-pool/state.json
           key: gemini-quota-v1-${{ steps.quota-day.outputs.day }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Verify completed batch outcome
+        id: verify-completed-batch-outcome
         run: python scripts/verify_review_report.py --allow-quota-stop
       - name: Upload per-place review report
+        id: upload-per-place-review-report
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -79,3 +88,32 @@ jobs:
           path: artifacts/ai-review-batch/report.json
           if-no-files-found: warn
           retention-days: 30
+      - name: Notify Telegram of workflow outcome
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          STEP_RESULTS: ${{ toJSON(steps) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo '::error::Telegram notification secrets are missing'
+            exit 1
+          fi
+          if [[ "$JOB_STATUS" == success ]]; then
+            message="✅ [FitTour] 배치 완료: $WORKFLOW_NAME"
+          else
+            failed_steps=$(jq -r 'to_entries | map(select(.value.outcome == "failure") | .key) | join(", ")' <<< "$STEP_RESULTS")
+            message="🚨 [FitTour] 배치 실패 경보: $WORKFLOW_NAME / ${failed_steps:-job} 단계 에러 발생"
+          fi
+          result=$(curl --silent --show-error --fail-with-body --retry 3 --connect-timeout 10 --max-time 30 \
+            --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=$message"$'\n'"$RUN_URL" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")
+          if ! jq -e '.ok == true' <<< "$result" > /dev/null; then
+            echo '::error::Telegram rejected the workflow notification'
+            exit 1
+          fi

@@ -41,6 +41,7 @@ def smart_search_pages(session, kakao_key, title, suffixes, size=10, sido=None, 
     bases = build_smart_queries(title, sido, sigungu)
     if not bases:
         return
+    queries = list(dict.fromkeys(f'{base} {suffix}'.strip() for base in bases for suffix in suffixes))
     providers = []
     client_id = os.getenv('NAVER_CLIENT_ID', '').strip()
     secret = os.getenv('NAVER_CLIENT_SECRET', '').strip()
@@ -56,24 +57,26 @@ def smart_search_pages(session, kakao_key, title, suffixes, size=10, sido=None, 
     for provider, endpoint, headers in providers:
         last_error = None
         try:
-            for base in bases:
-                for suffix in suffixes:
-                    query = f'{base} {suffix}'.strip()
-                    params = {'query': query, 'display' if provider == 'naver' else 'size': 5 if provider == 'naver' else size,
-                              'sort': 'sim' if provider == 'naver' else 'accuracy'}
-                    if provider == 'naver':
-                        params['format'] = 'json'
-                    response = session.get(endpoint, headers=headers, params=params, timeout=15)
-                    response.raise_for_status()
-                    payload = response.json()
-                    rows = payload.get('items' if provider == 'naver' else 'documents') if isinstance(payload, dict) else None
-                    if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
-                        raise ValueError('invalid_search_response')
-                    if provider == 'naver':
-                        rows = [{'title': re.sub(r'<[^>]*>?', '', row.get('title') or ''), 'url': row.get('link', ''),
-                                 'contents': re.sub(r'<[^>]*>?', '', row.get('description') or ''),
-                                 'datetime': row.get('postdate', '')} for row in rows]
-                    yield query, rows
+            for query in queries:
+                params = {'query': query, 'display' if provider == 'naver' else 'size': 5 if provider == 'naver' else size,
+                          'sort': 'sim' if provider == 'naver' else 'accuracy'}
+                if provider == 'naver':
+                    params['format'] = 'json'
+                response = session.get(endpoint, headers=headers, params=params, timeout=15)
+                if response is None:
+                    return
+                response.raise_for_status()
+                payload = response.json()
+                rows = payload.get('items' if provider == 'naver' else 'documents') if isinstance(payload, dict) else None
+                if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                    raise ValueError('invalid_search_response')
+                if provider == 'naver':
+                    rows = [{'title': re.sub(r'<[^>]*>?', '', row.get('title') or ''), 'url': row.get('link', ''),
+                             'contents': re.sub(r'<[^>]*>?', '', row.get('description') or ''),
+                             'datetime': row.get('postdate', '')} for row in rows]
+                yield query, rows
+        except StopIteration:
+            return
         except (requests.RequestException, ValueError) as error:
             last_error = error
             continue

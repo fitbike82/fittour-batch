@@ -13,19 +13,58 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        id: step-1
       - uses: actions/setup-python@v5
+        id: step-2
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: requirements.txt
       - run: python -m pip install -r requirements.txt
+        id: step-3
       - run: python -m pip check
+        id: step-4
       - run: python -m compileall -q scripts
+        id: step-5
       - run: python -m unittest -v
+        id: step-6
       - uses: actions/setup-node@v4
+        id: step-7
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+        id: step-8
       - run: npm run typecheck
+        id: step-9
       - run: npm test
+        id: step-10
+      - name: Notify Telegram of workflow outcome
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          STEP_RESULTS: ${{ toJSON(steps) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo '::error::Telegram notification secrets are missing'
+            exit 1
+          fi
+          if [[ "$JOB_STATUS" == success ]]; then
+            message="✅ [FitTour] 배치 완료: $WORKFLOW_NAME"
+          else
+            failed_steps=$(jq -r 'to_entries | map(select(.value.outcome == "failure") | .key) | join(", ")' <<< "$STEP_RESULTS")
+            message="🚨 [FitTour] 배치 실패 경보: $WORKFLOW_NAME / ${failed_steps:-job} 단계 에러 발생"
+          fi
+          result=$(curl --silent --show-error --fail-with-body --retry 3 --connect-timeout 10 --max-time 30 \
+            --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=$message"$'\n'"$RUN_URL" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")
+          if ! jq -e '.ok == true' <<< "$result" > /dev/null; then
+            echo '::error::Telegram rejected the workflow notification'
+            exit 1
+          fi

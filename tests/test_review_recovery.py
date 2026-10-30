@@ -1,3 +1,4 @@
+import os
 import json
 from pathlib import Path
 import re
@@ -9,6 +10,7 @@ from batch_ai_summary_cron import (search_reviews, ReviewCollectionUnavailable, 
 from pipeline_task2 import review_excerpt, validate_summary
 
 
+@patch.dict(os.environ, {}, clear=True)
 class ReviewRecoveryTests(unittest.TestCase):
     def test_deleted_article_does_not_discard_other_sources(self):
         session=Mock()
@@ -28,6 +30,9 @@ class ReviewRecoveryTests(unittest.TestCase):
             with self.assertRaises(ReviewCollectionUnavailable):
                 search_reviews(session,'key','place')
         self.assertEqual(session.review_diagnostics['readable'],0)
+        self.assertEqual(session.get.call_count, 3)
+        self.assertEqual(len({call.kwargs['params']['query']
+                              for call in session.get.call_args_list}), 3)
 
     def test_valid_alternatives_survive_temporary_errors(self):
         session=Mock()
