@@ -92,7 +92,7 @@ class BatchReviewTests(unittest.TestCase):
              patch('batch_ai_summary_cron.search_reviews', return_value=[]), \
              patch('batch_ai_summary_cron.persist', return_value=True) as save:
             counts = run(db, Mock(), generator, 'key', 2, sleep=sleep)
-        self.assertEqual((counts['processed'], counts['excluded'], counts['errors']), (1, 1, 1))
+        self.assertEqual((counts['processed'], counts['basic_info'], counts['errors']), (1, 1, 1))
         self.assertEqual(save.call_count, 1)
         self.assertEqual([c.args[0] for c in sleep.call_args_list], [5, 5])
 

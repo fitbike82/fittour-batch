@@ -44,11 +44,11 @@ class QualityTests(unittest.TestCase):
         self.assertEqual(len(reviews),2)
         self.assertEqual(session.get.call_count,1)
 
-    def test_missing_cons_and_invented_quotes_rejected(self):
+    def test_empty_cons_allowed_but_invented_quotes_rejected(self):
         data, reviews = self.valid()
         self.assertEqual(validate_summary(data, reviews), data)
         data['cons'] = []
-        with self.assertRaises(ValueError): validate_summary(data, reviews)
+        self.assertEqual(validate_summary(data, reviews)['cons'], [])
         data, reviews = self.valid()
         data['cons'][0]['evidence'] = '원문에 없는 내용으로 만든 단점'
         with self.assertRaises(ValueError): validate_summary(data, reviews)

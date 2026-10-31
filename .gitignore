@@ -33,6 +33,9 @@ Thumbs.db
 
 # Source reference material is retained locally, not published in this extraction.
 sql/
+!sql/
+sql/*
+!sql/ai_review_refresh.sql
 supabase/
 docs/*
 !docs/migration-report.md
@@ -52,6 +55,7 @@ supabase/migrations/*
 !supabase/migrations/*_daily_tour_relay.sql
 !supabase/migrations/*_enrichment_finish_isolation.sql
 !supabase/migrations/*_claim_queue_indexes.sql
+!supabase/migrations/*_ai_review_two_pass_queue.sql
 !docs/task-032.md
 !docs/smart-search.md
 !docs/ai-review-collection.md

@@ -23,6 +23,10 @@ from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from supabase import create_client, ClientOptions
 from postgrest.exceptions import APIError
+try:
+    from review_evidence import basic_summary
+except ModuleNotFoundError:
+    from scripts.review_evidence import basic_summary
 
 from pipeline_task2 import (
     Gemini, MODEL, MODEL_CHAIN, GeminiQuotaDeferred, GeminiCircuitOpen,
@@ -162,7 +166,9 @@ def search_reviews(session, key, title, *, sido=None, sigungu=None):
                 continue
             reviews.append({'source_id': len(reviews) + 1, 'title': heading,
                             'url': url, 'query': page['query'], 'text': text,
-                            'provider': provider, 'kind': page['kind']})
+                            'provider': provider, 'kind': page['kind'],
+                            'published_at': doc.get('datetime'),
+                            'fetched_at': datetime.now(timezone.utc).isoformat()})
             diagnostics['sources'][provider] += 1
             diagnostics['body_characters'] += len(text)
         if all(diagnostics['sources'][provider] >= 5 for provider in {p['provider'] for p in round_pages}):
@@ -234,7 +240,7 @@ def persist(db, place, summary, reviews, status, model, reason=None, diagnostics
             'job_content_id': place['content_id'], 'claim_token': place['claim_token'],
             'input_modified_time': place.get('modified_time'), 'result_status': status,
             'summary_data': summary, 'model_name': model, 'reason_code': reason,
-            'reviews_data': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind') if k in r} for r in reviews],
+            'reviews_data': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind', 'published_at', 'fetched_at') if k in r} for r in reviews],
             'diagnostics_data': diagnostics or {},
         }).execute().data)
     payload = {'content_id': place['content_id'], 'quality_status': status, 'model': model,
@@ -242,7 +248,9 @@ def persist(db, place, summary, reviews, status, model, reason=None, diagnostics
         'pros': summary['pros'] if summary else [], 'cons': summary['cons'] if summary else [],
         'visit_tips': summary['visit_tips'] if summary else None,
         'source_reviews': {'input_modified_time': place.get('modified_time'), 'reason': reason,
-            'reviews': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind') if k in r} for r in reviews]},
+            'analysis_basis': (summary or {}).get('analysis_basis', 'review_analysis'),
+            'analyzed_at': datetime.now(timezone.utc).isoformat(),
+            'reviews': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind', 'published_at', 'fetched_at') if k in r} for r in reviews]},
         'updated_at': datetime.now(timezone.utc).isoformat()}
     db.table('place_ai_summaries').upsert(payload, on_conflict='content_id').execute()
     # If the place changed during generation, leave the newly queued revision pending.
@@ -331,7 +339,8 @@ def write_report(path, counts):
 
 def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.monotonic, report_path=None):
     started = clock()
-    counts = {'processed': 0, 'success': 0, 'excluded': 0, 'errors': 0, 'deferred': 0, 'quota_deferred': 0, 'quota_stopped': False, 'places_started': 0}
+    counts = {'processed': 0, 'success': 0, 'excluded': 0, 'errors': 0, 'deferred': 0, 'quota_deferred': 0, 'quota_stopped': False, 'places_started': 0,
+              'basic_info': 0, 'review_analysis': 0}
     places = pending_places(db, limit)
     counts.update(selected=len(places), pass_number=places[0].get('attempt_number', 1) if places else None,
                   events=[], release_errors=0)
@@ -361,9 +370,19 @@ def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.m
                         if not reason.startswith(EXCLUDED_REASONS):
                             raise
                         actual_model = getattr(generator, 'last_model', None)
-                        summary, model, status = None, actual_model if isinstance(actual_model,str) else MODEL, 'insufficient'
+                        if reason in ('No unsponsored readable reviews', 'insufficient_evidence'):
+                            summary, model, status = basic_summary(place, reason), None, 'ready'
+                        else:
+                            summary, model, status = None, actual_model if isinstance(actual_model,str) else MODEL, 'insufficient'
+                    session.review_diagnostics['analysis_basis'] = (summary or {}).get('analysis_basis', 'review_analysis')
+                    session.review_diagnostics['checked_at'] = datetime.now(timezone.utc).isoformat()
+                    validation = getattr(generator, 'validation_events', [])
+                    session.review_diagnostics['validation_failures'] = validation if isinstance(validation, list) else []
+                    session.review_diagnostics['repair_attempted'] = getattr(generator, 'repair_attempted', False) is True
                     completed = persist(db, place, summary, reviews, status, model, reason,
                                         diagnostics=session.review_diagnostics)
+                    if completed and status == 'ready':
+                        counts[session.review_diagnostics['analysis_basis']] += 1
                 counts['processed'] += 1
                 if completed:
                     counts['success' if status == 'ready' else 'excluded'] += 1
@@ -462,9 +481,12 @@ def main():
     parser.add_argument('--limit', type=int, default=50)
     parser.add_argument('--timeout', type=int, default=1800, help='Maximum runtime in seconds (default: 1800 = 30 min)')
     parser.add_argument('--report', type=Path, default=Path('artifacts/ai-review-batch/report.json'))
+    parser.add_argument('--refresh-days', type=int, default=os.getenv('AI_REVIEW_REFRESH_DAYS', '180'))
     args = parser.parse_args()
     if not 1 <= args.limit <= 50:
         parser.error('--limit must be between 1 and 50')
+    if not 1 <= args.refresh_days <= 3650:
+        parser.error('--refresh-days must be between 1 and 3650')
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     load_dotenv()
@@ -481,6 +503,8 @@ def main():
                            options=ClientOptions(postgrest_client_timeout=15))
         stage = 'preflight'
         db.table('place_ai_summaries').select('content_id,quality_status,source_reviews').limit(1).execute()
+        stage = 'refresh_queue'
+        db.rpc('enqueue_due_ai_reviews', {'batch_limit': args.limit, 'refresh_days': args.refresh_days}).execute()
         deadline = time.monotonic() + args.timeout
         sleep = lambda seconds: budget_sleep(seconds, deadline)
         with BudgetSession(deadline) as session:
@@ -493,6 +517,7 @@ def main():
                    f"처리 회차: {counts['pass_number'] or '-'} / 선정: {counts['selected']}\n"
                    f"검토 시작: {counts['places_started']} / 총 처리: {counts['processed'] + counts['errors']} / 성공: {counts['success']} / 제외: {counts['excluded']}\n"
                    f"오류: {counts['errors']} / 미완료·이월: {counts['deferred']} / 소요: {counts['elapsed_seconds']}초\n"
+                   f"후기 분석: {counts['review_analysis']} / 기본 안내(후기 근거 부족): {counts['basic_info']}\n"
                    f"한도 이월(시도 차감 없음): {counts['quota_deferred']} / 429 응답: {counts.get('quota_429_total',0)}회\n"
                    f"중단 사유: {counts.get('stop_reason','선정 대상 처리 완료')}\n"
                    '1차 제외·오류는 전체 1차 종료 후 1회 재시도, 2차 실패는 점검 대상으로 보존합니다.')

@@ -35,7 +35,7 @@ def parallel_review_pages(session, kakao_key, title, suffixes, size=5, sido=None
         client = worker or session
         try:
             params = {'query': query, 'display' if provider == 'naver' else 'size': size,
-                      'sort': 'sim' if provider == 'naver' else 'accuracy'}
+                      'sort': 'date' if provider == 'naver' else 'recency'}
             if provider == 'naver':
                 params['format'] = 'json'
             response = client.get(endpoint, headers=headers, params=params, timeout=15)
@@ -48,7 +48,7 @@ def parallel_review_pages(session, kakao_key, title, suffixes, size=5, sido=None
                 raise ValueError('invalid_search_response')
             if provider == 'naver':
                 rows = [{'title': row.get('title', ''), 'url': row.get('link', ''),
-                         'contents': row.get('description', '')} for row in rows]
+                         'contents': row.get('description', ''), 'datetime': row.get('postdate')} for row in rows]
             return {'provider': provider, 'kind': kind, 'query': query, 'documents': rows[:size]}
         except (requests.RequestException, ValueError) as exc:
             response = getattr(exc, 'response', None)

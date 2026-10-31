@@ -33,6 +33,7 @@ jobs:
       GEMINI_API_KEY_02: ${{ secrets.GEMINI_API_KEY_02 }}
       GEMINI_API_KEY_03: ${{ secrets.GEMINI_API_KEY_03 }}
       BATCH_LIMIT: ${{ inputs.limit || '50' }}
+      AI_REVIEW_REFRESH_DAYS: ${{ vars.AI_REVIEW_REFRESH_DAYS || '180' }}
       PYTHONUNBUFFERED: '1'
       GEMINI_KEY_POOL_STATE: artifacts/gemini-key-pool/state.json
       TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
