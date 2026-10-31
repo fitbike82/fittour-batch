@@ -419,7 +419,8 @@ class Gemini:
     def summarize(self,place,reviews):
         self.last_model=None
         if not reviews: raise ValueError('No unsponsored readable reviews')
-        reviews=[{'source_id':r['source_id'],'text':review_excerpt(r['text'])} for r in reviews[:5]]
+        reviews=[{'source_id':r['source_id'], 'title':r.get('title', ''),
+                  'text':review_excerpt(r['text'], limit=3000)} for r in reviews[:10]]
         generation_config={'response_mime_type':'application/json'}
         payload={'systemInstruction':{'parts':[{'text':SYSTEM}]},'contents':[{'parts':[{'text':json.dumps({'place':place,'reviews':reviews},ensure_ascii=False)}]}],'generationConfig':{'responseMimeType':generation_config['response_mime_type'],'responseSchema':SCHEMA,'temperature':0.2}}
         chain = MODEL_CHAIN if self.model == MODEL else ((self.model, 2),)

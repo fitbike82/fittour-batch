@@ -88,23 +88,34 @@ export class SharedBudget implements Budget {
   private keyId: string;
   private initialDay = kstDay();
   constructor(private db: SupabaseClient, key: string, private local: Budget,
-              private cap = 100_000, private alreadyUsed = 0) {
+              private cap = 100_000, private alreadyUsed = 0,
+              private sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms))) {
     this.keyId = keyId(key);
   }
   async reserve() {
     await this.local.reserve();
-    const { data, error } = await this.db.rpc('reserve_batch_tour_call', {
-      p_key: this.keyId, p_cap: this.cap, p_floor: kstDay() === this.initialDay ? this.alreadyUsed : 0, p_block: false,
-    });
-    if (error) throw new BatchError(`database_quota_${error.code}`);
+    const data = await this.update(false);
     if (!data) throw new QuotaStop();
   }
   async block() {
     await this.local.block();
-    const { error } = await this.db.rpc('reserve_batch_tour_call', {
-      p_key: this.keyId, p_cap: this.cap, p_floor: kstDay() === this.initialDay ? this.alreadyUsed : 0, p_block: true,
-    });
-    if (error) throw new BatchError(`database_quota_${error.code}`);
+    await this.update(true);
+  }
+  private async update(block: boolean): Promise<unknown> {
+    for (let attempt = 0; ; attempt++) {
+      const { data, error, status } = await this.db.rpc('reserve_batch_tour_call', {
+        p_key: this.keyId, p_cap: this.cap,
+        p_floor: kstDay() === this.initialDay ? this.alreadyUsed : 0, p_block: block,
+      });
+      if (!error) return data;
+      const code = error.code || (status === 0 || [502, 503, 504].includes(status) ? 'transport' : 'unknown');
+      // An ambiguous response may have committed. Re-reservation only overcounts;
+      // never refund it or send a provider request without a confirmed reservation.
+      if (attempt >= 3 || !/^(transport|57014|40001|40P01|08[A-Z0-9]{3})$/.test(code)) {
+        throw new BatchError(`database_quota_${code}`);
+      }
+      await this.sleep(500 * 2 ** attempt);
+    }
   }
 }
 export function database(url: string, key: string) {

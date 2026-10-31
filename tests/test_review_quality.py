@@ -131,9 +131,9 @@ class QualityTests(unittest.TestCase):
         self.assertIn(MODEL,session.post.call_args_list[0].args[0])
         self.assertIn(FALLBACK_MODEL,session.post.call_args_list[1].args[0])
         prompt=json.loads(session.post.call_args.kwargs['json']['contents'][0]['parts'][0]['text'])
-        self.assertEqual(len(prompt['reviews']),5)
-        self.assertEqual(sum(len(r['text']) for r in prompt['reviews']),2500)
-        self.assertTrue(all(len(r['text'])==500 for r in prompt['reviews']))
+        self.assertEqual(len(prompt['reviews']),8)
+        self.assertEqual(sum(len(r['text']) for r in prompt['reviews']),sum(len(r['text']) for r in reviews))
+        self.assertTrue(all(500 < len(r['text']) <= 3000 for r in prompt['reviews']))
 
     def test_three_place_category_mix(self):
         db=Mock()

@@ -4,6 +4,7 @@ from collections import Counter
 import json
 import logging
 import os
+import re
 import ssl
 import sys
 import time
@@ -12,15 +13,16 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 try:
-    from smart_search import smart_search_pages, has_search_credentials
+    from smart_search import parallel_review_pages, has_search_credentials
 except ModuleNotFoundError:
-    from scripts.smart_search import smart_search_pages, has_search_credentials
+    from scripts.smart_search import parallel_review_pages, has_search_credentials
 
 import requests
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from requests.adapters import HTTPAdapter
 from supabase import create_client, ClientOptions
+from postgrest.exceptions import APIError
 
 from pipeline_task2 import (
     Gemini, MODEL, MODEL_CHAIN, GeminiQuotaDeferred, GeminiCircuitOpen,
@@ -52,6 +54,9 @@ class BudgetSession(requests.Session):
         self.deadline, self.clock = deadline, clock
         self.headers['User-Agent'] = 'LocalTripAI/1.0'
 
+    def fork(self):
+        return BudgetSession(self.deadline, self.clock)
+
     def request(self, method, url, **kwargs):
         if self.deadline is not None:
             remaining = self.deadline - self.clock()
@@ -80,6 +85,9 @@ def read_article(session, url):
             url = f"https://m.blog.naver.com/{query['blogId'][0]}/{query['logNo'][0]}"
         else:
             url = 'https://m.blog.naver.com' + parsed.path
+    elif host in ('cafe.naver.com', 'm.cafe.naver.com'):
+        # Fetch public HTML only. No login/session bypass or snippet substitution.
+        url = 'https://m.cafe.naver.com' + parsed.path + ('?' + parsed.query if parsed.query else '')
     elif not (host.endswith('.tistory.com') or host == 'brunch.co.kr'):
         raise ValueError('Unsupported article host')
     response = session.get(url, timeout=15, allow_redirects=False)
@@ -87,9 +95,9 @@ def read_article(session, url):
     soup = BeautifulSoup(response.content, 'html.parser')
     for element in soup.select('script,style,noscript,nav,header,footer'):
         element.decompose()
-    container = soup.select_one('.se-main-container, #postViewArea, .tt_article_useless_p_margin, #article-view, .entry-content, .wrap_body')
+    container = soup.select_one('.se-main-container, #postViewArea, .tt_article_useless_p_margin, #article-view, .entry-content, .wrap_body, .ContentRenderer, .article_viewer, #postContent')
     if container is None:
-        raise ValueError('Unreadable article')
+        raise ValueError('Cafe public body unavailable' if 'cafe.naver.com' in host else 'Unreadable article')
     paragraphs = [p.strip() for p in container.get_text('\n', strip=True).splitlines() if p.strip()]
     # A disclosed sponsored post is dropped entirely: removing the disclosure alone
     # does not turn the remaining review into an independent opinion.
@@ -98,20 +106,39 @@ def read_article(session, url):
     text = ' '.join(paragraphs)
     if len(text) < 150:
         raise ValueError('Article too short')
-    return review_excerpt(text)
+    return review_excerpt(text, limit=3000)
 
 
 def search_reviews(session, key, title, *, sido=None, sigungu=None):
     reviews, seen = [], set()
-    diagnostics = {'queries': 0, 'documents': 0, 'article_errors': {}, 'filtered': {}}
+    diagnostics = {'queries': 0, 'documents': 0, 'article_errors': {}, 'filtered': {},
+                   'search_errors': {}, 'sources': {'naver': 0, 'kakao': 0}, 'body_characters': 0,
+                   'returned_documents': 0, 'duplicates': 0, 'region_available': bool(sido or sigungu)}
     session.review_diagnostics = diagnostics
     unavailable = 0
-    for query, documents in smart_search_pages(session, key, title, ('내돈내산', '솔직 후기', '방문 후기'), sido=sido, sigungu=sigungu):
-        diagnostics['queries'] += 1
-        for doc in documents:
+    pages = parallel_review_pages(session, key, title, ('방문 후기', '솔직 후기', '내돈내산'),
+                                  size=5, sido=sido, sigungu=sigungu)
+    for round_pages in pages:
+        # Interleave Naver blog and cafe so neither monopolizes the five Naver slots.
+        candidates = []
+        for index in range(5):
+            for page in round_pages:
+                if index < len(page['documents']):
+                    candidates.append((page, page['documents'][index]))
+        for page in round_pages:
+            diagnostics['queries'] += 1
+            diagnostics['returned_documents'] += len(page['documents'])
+            if page.get('error'):
+                code = page['provider'] + '_' + page['kind'] + '_' + page['error']
+                diagnostics['search_errors'][code] = diagnostics['search_errors'].get(code, 0) + 1
+        for page, doc in candidates:
+            provider = page['provider']
+            if diagnostics['sources'][provider] >= 5:
+                continue
             diagnostics['documents'] += 1
             url = doc.get('url', '')
             if not url or url in seen:
+                diagnostics['duplicates'] += 1
                 continue
             seen.add(url)
             heading = clean_html(doc.get('title'))
@@ -134,19 +161,63 @@ def search_reviews(session, key, title, *, sido=None, sigungu=None):
                 diagnostics['filtered'][reason] = diagnostics['filtered'].get(reason, 0) + 1
                 continue
             reviews.append({'source_id': len(reviews) + 1, 'title': heading,
-                            'url': url, 'query': query, 'text': text})
-            if len(reviews) == 5:
-                break
-        if len(reviews) >= 2:
+                            'url': url, 'query': page['query'], 'text': text,
+                            'provider': provider, 'kind': page['kind']})
+            diagnostics['sources'][provider] += 1
+            diagnostics['body_characters'] += len(text)
+        if all(diagnostics['sources'][provider] >= 5 for provider in {p['provider'] for p in round_pages}):
             break
     diagnostics['readable'] = len(reviews)
-    if len(reviews) < 2 and unavailable:
+    diagnostics['target'] = 10
+    diagnostics['shortfall'] = 10 - len(reviews)
+    diagnostics['missing_providers'] = sorted({'naver', 'kakao'} - {p['provider'] for p in round_pages}) if diagnostics['queries'] else ['naver', 'kakao']
+    diagnostics['collection_reason'] = ('complete' if len(reviews) == 10 else
+        'partial_sources' if reviews else 'no_search_results' if not diagnostics['returned_documents']
+        else 'no_usable_body')
+    if len(reviews) < 2 and (unavailable or diagnostics['search_errors']):
         raise ReviewCollectionUnavailable('Insufficient sources after temporary article failures')
     return reviews
 
 
+def review_region(db, place):
+    # Queue RPCs may omit addresses. Fetch only when needed; never treat numeric area codes as names.
+    address = place.get('addr1') or place.get('address')
+    sido, sigungu = place.get('sido'), place.get('sigungu')
+    if not address and not (sido or sigungu) and place.get('claim_token'):
+        rows = db.table('places').select('addr1,address').eq('content_id', place['content_id']).limit(1).execute().data or []
+        if isinstance(rows, list) and rows:
+            address = rows[0].get('addr1') or rows[0].get('address')
+    parts = str(address or '').split()
+    if not sido and parts:
+        sido = parts[0]
+    if not sigungu and len(parts) > 1:
+        sigungu = parts[1]
+    return sido, sigungu
+
+
+def exclusion_category(reason):
+    if reason == 'No unsponsored readable reviews':
+        return 'no_usable_body'
+    if reason == 'insufficient_evidence':
+        return 'insufficient_evidence'
+    if reason and reason.startswith('Ungrounded '):
+        return 'quote_validation'
+    if reason and reason.startswith('Invalid '):
+        return 'output_validation'
+    return reason or 'unknown'
+
+
 def pending_places(db, limit):
-    return db.rpc('claim_ai_review_work', {'batch_limit': limit}).execute().data or []
+    # Retry only explicit rolled-back transactions. A lost response could have
+    # committed leases, so transport errors must not blindly claim another batch.
+    for attempt in range(4):
+        try:
+            return db.rpc('claim_ai_review_work', {'batch_limit': limit}).execute().data or []
+        except APIError as exc:
+            if getattr(exc, 'code', None) not in ('57014', '40001', '40P01') or attempt == 3:
+                raise
+            LOG.warning('stage=claim database_retry=%s code=%s', attempt + 1, safe_error_code(exc))
+            time.sleep(2 ** attempt)
 
 
 def finish_queue(db, place):
@@ -163,7 +234,7 @@ def persist(db, place, summary, reviews, status, model, reason=None, diagnostics
             'job_content_id': place['content_id'], 'claim_token': place['claim_token'],
             'input_modified_time': place.get('modified_time'), 'result_status': status,
             'summary_data': summary, 'model_name': model, 'reason_code': reason,
-            'reviews_data': [{k: r[k] for k in ('source_id', 'title', 'url', 'query')} for r in reviews],
+            'reviews_data': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind') if k in r} for r in reviews],
             'diagnostics_data': diagnostics or {},
         }).execute().data)
     payload = {'content_id': place['content_id'], 'quality_status': status, 'model': model,
@@ -171,7 +242,7 @@ def persist(db, place, summary, reviews, status, model, reason=None, diagnostics
         'pros': summary['pros'] if summary else [], 'cons': summary['cons'] if summary else [],
         'visit_tips': summary['visit_tips'] if summary else None,
         'source_reviews': {'input_modified_time': place.get('modified_time'), 'reason': reason,
-            'reviews': [{k: r[k] for k in ('source_id', 'title', 'url', 'query')} for r in reviews]},
+            'reviews': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind') if k in r} for r in reviews]},
         'updated_at': datetime.now(timezone.utc).isoformat()}
     db.table('place_ai_summaries').upsert(payload, on_conflict='content_id').execute()
     # If the place changed during generation, leave the newly queued revision pending.
@@ -226,6 +297,11 @@ def notify(message):
 
 
 def safe_error_code(exc):
+    if isinstance(exc, ReviewCollectionUnavailable):
+        return 'review_collection_unavailable'
+    if isinstance(exc, APIError):
+        code = str(getattr(exc, 'code', '') or '')
+        return 'database_' + (code if re.fullmatch(r'[A-Z0-9]{5,12}', code) else 'unknown')
     if isinstance(exc, requests.RequestException):
         return f'HTTP_{exc.response.status_code}' if exc.response is not None else mask_sensitive(type(exc).__name__)
     if isinstance(exc, RuntimeError) and str(exc).startswith('Gemini request failed ('):
@@ -236,7 +312,20 @@ def safe_error_code(exc):
 def write_report(path, counts):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({'checked_at': datetime.now(timezone.utc).isoformat(), **counts},
+    exclusions = Counter((e.get('diagnostics', {}).get('collection_reason', 'no_usable_body')
+                          if e.get('reason') == 'No unsponsored readable reviews' else exclusion_category(e.get('reason')))
+                         for e in counts.get('events', []) if e.get('status') == 'insufficient')
+    failures = Counter(e.get('reason', 'unknown') for e in counts.get('events', []) if e.get('status') == 'error')
+    filtered, article_errors, search_errors = Counter(), Counter(), Counter()
+    for event in counts.get('events', []):
+        diagnostics = event.get('diagnostics') or {}
+        filtered.update(diagnostics.get('filtered', {}))
+        article_errors.update(diagnostics.get('article_errors', {}))
+        search_errors.update(diagnostics.get('search_errors', {}))
+    path.write_text(json.dumps({'checked_at': datetime.now(timezone.utc).isoformat(), **counts,
+                               'exclusion_reasons': dict(exclusions), 'failure_reasons': dict(failures),
+                               'body_filter_reasons': dict(filtered), 'article_errors': dict(article_errors),
+                               'search_errors': dict(search_errors)},
                                ensure_ascii=False, indent=2), encoding='utf-8')
 
 
@@ -260,10 +349,12 @@ def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.m
                     status = resumed
                     completed = True
                 else:
-                    reviews = search_reviews(session, kakao_key, place['title'])
+                    sido, sigungu = review_region(db, place)
+                    reviews = search_reviews(session, kakao_key, place['title'], sido=sido, sigungu=sigungu)
+                    session.review_diagnostics['region_available'] = bool(sido or sigungu)
                     search_429_streak = 0
                     try:
-                        summary, model = generator.summarize(place, reviews)
+                        summary, model = generator.summarize({**place, 'sido': sido, 'sigungu': sigungu}, reviews)
                         status = 'ready'
                     except ValueError as exc:
                         reason = str(exc)
@@ -380,6 +471,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     logging.getLogger('httpx').setLevel(logging.WARNING)
     setup_masking()
+    stage = 'configuration'
     try:
         key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
         kakao = os.getenv('KAKAO_REST_API_KEY') or os.getenv('KAKAO_API_KEY')
@@ -387,12 +479,14 @@ def main():
             raise ValueError('Missing API configuration')
         db = create_client(os.environ['SUPABASE_URL'], key,
                            options=ClientOptions(postgrest_client_timeout=15))
+        stage = 'preflight'
         db.table('place_ai_summaries').select('content_id,quality_status,source_reviews').limit(1).execute()
         deadline = time.monotonic() + args.timeout
         sleep = lambda seconds: budget_sleep(seconds, deadline)
         with BudgetSession(deadline) as session:
             generator = Gemini(session, sleep=sleep,
                                min_interval=5, max_rpm=12)
+            stage = 'claim_or_process'
             counts = run(db, session, generator, kakao, args.limit, sleep=sleep, report_path=args.report)
         write_report(args.report, counts)
         message = ('[LocalTripAI] AI 리뷰 배치\n'
@@ -415,8 +509,10 @@ def main():
         LOG.warning('Daily quota exhausted, terminating batch gracefully: %s', mask_sensitive(str(exc)))
         return 0
     except Exception as exc:
-        LOG.error('AI batch failed: %s', mask_sensitive(type(exc).__name__))
-        notify('[LocalTripAI] AI 리뷰 배치 실행 실패: ' + mask_sensitive(type(exc).__name__))
+        code = safe_error_code(exc)
+        LOG.error('AI batch failed: stage=%s code=%s', stage, code)
+        write_report(args.report, {'errors': 1, 'fatal': True, 'stage': stage, 'stop_reason': code})
+        notify('[LocalTripAI] AI 리뷰 배치 실행 실패: ' + code)
         return 1
 
 

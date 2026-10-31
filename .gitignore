@@ -54,3 +54,4 @@ supabase/migrations/*
 !supabase/migrations/*_claim_queue_indexes.sql
 !docs/task-032.md
 !docs/smart-search.md
+!docs/ai-review-collection.md

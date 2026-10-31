@@ -6,6 +6,47 @@ from batch_ai_summary_cron import persist, resume_saved, search_reviews, run, pe
 
 @patch.dict(os.environ, {}, clear=True)
 class BatchReviewTests(unittest.TestCase):
+    def test_startup_database_failure_writes_safe_report(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from postgrest.exceptions import APIError
+        from batch_ai_summary_cron import main
+        with tempfile.TemporaryDirectory() as directory:
+            report = Path(directory) / 'report.json'
+            db = Mock()
+            db.table.return_value.select.return_value.limit.return_value.execute.side_effect = APIError(
+                {'code': '42501', 'message': 'private SQL and credentials'})
+            with patch.dict(os.environ, {'SUPABASE_URL': 'https://example.supabase.co',
+                                         'SUPABASE_SERVICE_ROLE_KEY': 'private-key'}), \
+                 patch('sys.argv', ['batch', '--report', str(report)]), \
+                 patch('batch_ai_summary_cron.load_dotenv'), \
+                 patch('batch_ai_summary_cron.has_search_credentials', return_value=True), \
+                 patch('batch_ai_summary_cron.discover_keys', return_value=['key']), \
+                 patch('batch_ai_summary_cron.create_client', return_value=db), \
+                 patch('batch_ai_summary_cron.notify'):
+                self.assertEqual(main(), 1)
+            data = json.loads(report.read_text(encoding='utf-8'))
+            self.assertEqual(data['stage'], 'preflight')
+            self.assertEqual(data['stop_reason'], 'database_42501')
+            self.assertNotIn('private', report.read_text(encoding='utf-8'))
+
+    def test_claim_retries_rolled_back_timeout_but_not_ambiguous_response(self):
+        from postgrest.exceptions import APIError
+        from batch_ai_summary_cron import safe_error_code
+        db = Mock()
+        timeout = APIError({'code': '57014', 'message': 'private SQL', 'details': None, 'hint': None})
+        db.rpc.return_value.execute.side_effect = [timeout, Mock(data=[{'content_id': '1'}])]
+        with patch('batch_ai_summary_cron.time.sleep') as sleep:
+            self.assertEqual(pending_places(db, 1), [{'content_id': '1'}])
+        sleep.assert_called_once_with(1)
+        self.assertEqual(safe_error_code(timeout), 'database_57014')
+        db.rpc.return_value.execute.side_effect = APIError({'code': '', 'message': 'private URL'})
+        with patch('batch_ai_summary_cron.time.sleep') as sleep:
+            with self.assertRaises(APIError):
+                pending_places(db, 1)
+        sleep.assert_not_called()
+
     def place(self):
         return {'content_id': '1', 'title': '장소', 'modified_time': '20261015000000'}
 
@@ -20,7 +61,7 @@ class BatchReviewTests(unittest.TestCase):
         self.assertTrue(all(call.args[0] == 'https://dapi.kakao.com/v2/search/blog'
                             for call in session.get.call_args_list))
         self.assertEqual([c.kwargs['params']['query'] for c in session.get.call_args_list],
-                         ['장소 내돈내산', '장소 솔직 후기', '장소 방문 후기'])
+                         ['장소 방문 후기', '장소 솔직 후기', '장소 내돈내산'])
 
     def test_priority_and_limit(self):
         db = Mock()

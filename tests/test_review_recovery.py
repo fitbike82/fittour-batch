@@ -21,7 +21,7 @@ class ReviewRecoveryTests(unittest.TestCase):
             rows=search_reviews(session,'key','place')
         self.assertEqual([r['url'] for r in rows],['a','c','d'])
         self.assertEqual(session.review_diagnostics['article_errors'],{'404':1})
-        self.assertEqual(session.get.call_count,1)
+        self.assertEqual(session.get.call_count,3)
 
     def test_temporary_source_failure_is_retryable_not_permanent_exclusion(self):
         session=Mock()
