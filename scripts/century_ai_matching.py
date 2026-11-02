@@ -67,6 +67,11 @@ def atomic_json(path, value):
             time.sleep(.1 * 2 ** attempt)
 
 
+def seed_digest(raw):
+    # Git checkouts normalize CRLF on Linux; identical source data must resume.
+    return hashlib.sha256(raw.replace(b'\r\n', b'\n')).hexdigest()
+
+
 @contextmanager
 def state_lock(directory):
     directory.mkdir(parents=True, exist_ok=True)
@@ -394,13 +399,16 @@ def execute(args):
     setup_masking()
     state_path = args.state_dir / 'queue_ai_matching.json'
     raw = args.input.read_bytes()
-    digest = hashlib.sha256(raw).hexdigest()
+    digest = seed_digest(raw)
     seed = json.loads(raw.decode('utf-8-sig'))
     bootstrap = Path('docs/century-ai-checkpoint.json')
     previous_path = state_path if state_path.exists() else bootstrap
     previous = json.loads(previous_path.read_text(encoding='utf-8')) if previous_path.exists() else None
+    initial = json.loads(bootstrap.read_text(encoding='utf-8')) if bootstrap.exists() else {}
+    if (previous and previous.get('seed_hash') == initial.get('legacy_seed_hash')
+            and initial.get('seed_hash') == digest):
+        previous['seed_hash'] = digest
     if previous and 'deployment_pending_ids' not in previous and bootstrap.exists():
-        initial = json.loads(bootstrap.read_text(encoding='utf-8'))
         if initial.get('seed_hash') == digest:
             previous['deployment_pending_ids'] = initial.get('deployment_pending_ids', [])
     if previous and previous.get('seed_hash') != digest:

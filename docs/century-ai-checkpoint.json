@@ -1407,7 +1407,7 @@
       "attempts": 0
     }
   ],
-  "seed_hash": "b31d89d3e76b10a4e386ffe7bc91c3ee9b0cf4c106e9fb66d9cf6d17763c2a1b",
+  "seed_hash": "d0a35f319a23f64c9346c4283cd1e9671bda64be3db89a72c3327ac9e2fe6e1d",
   "daily_usage": {
     "2026-11-02": {
       "started": 50,
@@ -1667,5 +1667,6 @@
     "872",
     "874",
     "969"
-  ]
+  ],
+  "legacy_seed_hash": "b31d89d3e76b10a4e386ffe7bc91c3ee9b0cf4c106e9fb66d9cf6d17763c2a1b"
 }

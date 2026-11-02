@@ -6,10 +6,14 @@ import unittest
 from unittest.mock import Mock, patch
 
 from scripts.century_ai_matching import (isFoodBusiness, prepare, top_candidates, MinuteGate,
-    parse_result, run_batch, state_lock, GeminiQuotaDeferred, atomic_json, MatchingSession, final_summary)
+    parse_result, run_batch, state_lock, GeminiQuotaDeferred, atomic_json, MatchingSession, final_summary, seed_digest)
 
 
 class CenturyAIMatchingTests(unittest.TestCase):
+    def test_seed_digest_survives_windows_to_linux_checkout_but_detects_data_changes(self):
+        self.assertEqual(seed_digest(b'{\r\n"records": []\r\n}'), seed_digest(b'{\n"records": []\n}'))
+        self.assertNotEqual(seed_digest(b'{"records": []}'), seed_digest(b'{"records": [1]}'))
+
     def test_final_summary_reports_remaining_then_verified_completion(self):
         state = {'seed_hash': 'hash', 'deployment_pending_ids': ['1'], 'jobs': [
             {'csv_id': '1', 'status': 'pending'}, {'csv_id': '2', 'status': 'no_match'}]}
