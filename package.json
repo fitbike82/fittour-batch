@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/node/*.test.ts",
     "sync:daily-master": "tsx scripts/sync-daily-master.ts",
+    "sync:daily-tour": "tsx scripts/daily-tour-pipeline.ts --limit 10000",
     "batch:report": "tsx scripts/report-tour-batch.ts"
   },
   "dependencies": {

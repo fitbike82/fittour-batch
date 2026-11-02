@@ -1,11 +1,8 @@
 name: Daily Tour Enrichment
 
 on:
-  schedule:
-    # Equivalent to 0 17,19,21 * * *. Separate entries identify a delayed relay reliably.
-    - cron: '0 17 * * *' # 02:00 KST: priority categories
-    - cron: '0 19 * * *' # 04:00 KST: secondary categories and courses
-    - cron: '0 21 * * *' # 06:00 KST: remaining places and failed retries
+  # Bulk relay remains available manually. Daily incremental work is scheduled
+  # once in daily_places_sync.yml and shares this concurrency group.
   workflow_dispatch:
     inputs:
       wave:

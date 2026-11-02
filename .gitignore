@@ -59,3 +59,4 @@ supabase/migrations/*
 !docs/task-032.md
 !docs/smart-search.md
 !docs/ai-review-collection.md
+!docs/daily-tour-pipeline.md

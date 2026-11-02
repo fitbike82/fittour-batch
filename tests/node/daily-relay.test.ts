@@ -64,7 +64,7 @@ test('category priority resets the keyset cursor before scanning each next categ
 
 test('workflow schedules, budgets, dispatch inputs and report artifacts match relay configuration', () => {
   const workflow = parse(read('.github/workflows/daily_tour_batch.yml'));
-  assert.deepEqual(workflow.on.schedule.map((r: { cron: string }) => r.cron), ['0 17 * * *', '0 19 * * *', '0 21 * * *']);
+  assert.equal(workflow.on.schedule, undefined); // Bulk relay is manual after initial loading.
   assert.equal(workflow.on.workflow_dispatch.inputs.limit.default, 25000);
   assert.equal(workflow.on.workflow_dispatch.inputs.category.default, 'all');
   assert.ok(workflow.jobs.enrich.timeout_minutes === undefined);
@@ -79,7 +79,7 @@ test('workflow schedules, budgets, dispatch inputs and report artifacts match re
   const master = parse(read('.github/workflows/daily_places_sync.yml'));
   assert.equal(master.on.schedule[0].cron, '0 16 * * *');
   assert.equal(master.concurrency.group, workflow.concurrency.group);
-  assert.match(master.jobs.sync.steps.find((s: { run?: string }) => s.run?.includes('sync:daily-master')).run, /sync:daily-master/);
+  assert.match(master.jobs.sync.steps.find((s: { run?: string }) => s.run?.includes('sync:daily-tour')).run, /sync:daily-tour/);
   assert.doesNotMatch(read('.github/workflows/daily_tour_batch.yml'), /8372|8,372|sync_tour_enrichment_full/);
 });
 

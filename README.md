@@ -90,7 +90,7 @@ npm run batch-tour-enrichment -- --env-file /path/to/server.env
 
 Apply the additive migration first. See [installation, schema mapping, quotas,
 resume behavior and validation](docs/task-030-031.md). The full master CLI is one-off.
-TASK-032 schedules the daily master and detail relays. The commands share a maximum
+The daily incremental pipeline schedules master and detail updates together. The commands share a maximum
 of 100000 TourAPI calls per KST day; existing Python jobs have separate accounting and must not overlap a full
 backfill without accounting for their usage.
 
@@ -104,3 +104,15 @@ npm run batch:report -- --env-file /path/to/server.env
 ```
 
 See [rollout, cumulative relay budgets, live report definitions and validation](docs/task-032.md).
+
+## Daily incremental pipeline
+
+```sh
+npm run sync:daily-tour -- --env-file /path/to/server.env --max-seconds 5400
+```
+
+Runs master changes and inactive-state updates before enrichment using the same
+API client and quota ledger. Each run caps actual master changes and detail claims
+at 10,000 per phase; smaller `--limit` values are supported. The scheduled run is
+once daily at 01:00 KST. Bulk relays are manual. See
+[safety limits, checkpoint recovery and deployment](docs/daily-tour-pipeline.md).

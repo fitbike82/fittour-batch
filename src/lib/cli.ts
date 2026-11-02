@@ -59,6 +59,7 @@ export async function cli(job: (store: SupabaseStore, api: TourApi, opt: Options
       return;
     }
     opt = parsed;
+    if (name === 'daily-tour') opt.limit = Math.min(opt.limit, 10_000);
     report.categories = opt.categories; report.daily_limit = opt.dailyLimit; report.place_limit = opt.limit;
     const configured = configuredStore(opt);
     store = configured.store;

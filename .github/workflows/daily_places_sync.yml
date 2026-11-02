@@ -1,4 +1,4 @@
-name: Daily master catalog sync
+name: Daily Tour incremental sync
 on:
   schedule:
     - cron: '0 16 * * *' # 01:00 KST
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 105
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
@@ -33,19 +33,19 @@ jobs:
           cache: npm
       - run: npm ci
         id: step-3
-      - name: Refresh master before the detail relays
+      - name: Refresh master then enrich up to 10000 places
         id: refresh-master-before-the-detail-relays
         shell: bash
         run: |
-          command='sync:daily-master'
+          command='sync:daily-tour'
           if [[ "$CATALOG_MODE" == full ]]; then command='sync:master'; fi
           mkdir -p artifacts/tour-batch
           set +e
-          npm run "$command" 2>&1 | tee artifacts/tour-batch/run.log
+          npm run "$command" -- --max-seconds 5400 2>&1 | tee artifacts/tour-batch/run.log
           status=${PIPESTATUS[0]}
           set -e
           if [[ "$status" == 2 ]]; then
-            echo 'Daily quota exhausted; checkpoint retained for a later retry.'
+            echo 'Quota/runtime/change limit reached; remaining work retained for the next daily run.'
           elif [[ "$status" != 0 ]]; then
             exit "$status"
           fi
