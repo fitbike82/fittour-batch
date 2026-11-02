@@ -15,13 +15,14 @@ test('review refresh covers empty points, initial work barrier, history and pres
       grant select,insert,update on public.places,public.place_ai_summaries to service_role;
       insert into public.places(content_id,title,modified_time) values('a','Park','v1'),('b','Museum','v1');`);
     await db.exec(read('supabase/migrations/20261020094517_ai_review_two_pass_queue.sql'));
+    await db.exec(read('sql/place_taxonomy_setup.sql'));
     await db.exec(read('sql/ai_review_refresh.sql'));
     await db.exec(read('sql/ai_review_refresh.sql'));
     await db.exec('set role service_role');
     const due = async () => (await db.query<{ n: number }>('select public.enqueue_due_ai_reviews(50,180) n')).rows[0].n;
     const claim = async () => (await db.query<{ content_id: string; claim_token: string }>('select * from public.claim_ai_review_work(50)')).rows;
-    const finish = async (row: { content_id: string; claim_token: string }, status: string, label = 'summary', basis = 'review_analysis') => {
-      const data = { summary_lines: [label,'line2','line3'],pros:[],cons:[],visit_tips:'tip',analysis_basis:basis };
+    const finish = async (row: { content_id: string; claim_token: string }, status: string, label = 'summary', basis = 'review_analysis', taxonomy: Record<string, unknown> = {}) => {
+      const data = { summary_lines: [label,'line2','line3'],pros:[],cons:[],visit_tips:'tip',analysis_basis:basis, ...taxonomy };
       return (await db.query<{ ok: boolean }>(`select public.complete_ai_review_work($1,$2,'v1',$3,$4::jsonb) ok`,
         [row.content_id,row.claim_token,status,JSON.stringify(data)])).rows[0].ok;
     };
@@ -61,6 +62,18 @@ test('review refresh covers empty points, initial work barrier, history and pres
     // An unchanged revision reactivated after deactivation must be queued again.
     await db.exec("update public.places set is_active=false where content_id='b'; update public.places set is_active=true where content_id='b'");
     assert.equal((await db.query<{last_status:string}>("select last_status from public.ai_review_jobs where content_id='b'")).rows[0].last_status,'pending');
+    // A taxonomy validation error rolls back the summary and attempt together.
+    await db.exec("insert into public.places(content_id,content_type_id,title,modified_time) values('taxonomy','39','Restaurant','v1')");
+    const taxonomyRow = (await claim()).find(row => row.content_id === 'taxonomy')!;
+    assert.ok(taxonomyRow);
+    await assert.rejects(finish(taxonomyRow,'ready','classified','review_analysis',{
+      category_l1:'숙박', category_l2:null, filter_tags:[],
+    }));
+    assert.equal((await db.query<{n:number}>("select count(*)::int n from public.place_ai_summaries where content_id='taxonomy'")).rows[0].n,0);
+    assert.equal(await finish(taxonomyRow,'ready','classified','review_analysis',{
+      category_l1:'음식점', category_l2:'냉면/밀면', filter_tags:['냉면','갈비'],
+    }),true);
+    assert.equal((await db.query<{category_l1:string}>("select category_l1 from public.places where content_id='taxonomy'")).rows[0].category_l1,'음식점');
     await db.exec('set role anon');
     await assert.rejects(db.query('select public.enqueue_due_ai_reviews(50,180)'));
     await assert.rejects(db.query('select * from public.ai_review_summary_history'));

@@ -36,6 +36,7 @@ sql/
 !sql/
 sql/*
 !sql/ai_review_refresh.sql
+!sql/place_taxonomy_setup.sql
 supabase/
 docs/*
 !docs/migration-report.md
@@ -60,3 +61,7 @@ supabase/migrations/*
 !docs/smart-search.md
 !docs/ai-review-collection.md
 !docs/daily-tour-pipeline.md
+!docs/century-store-taxonomy.md
+!docs/century-ai-matching.md
+!docs/unmatched_century_stores.json
+!docs/century-ai-checkpoint.json

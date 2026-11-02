@@ -116,3 +116,28 @@ API client and quota ledger. Each run caps actual master changes and detail clai
 at 10,000 per phase; smaller `--limit` values are supported. The scheduled run is
 once daily at 01:00 KST. Bulk relays are manual. See
 [safety limits, checkpoint recovery and deployment](docs/daily-tour-pipeline.md).
+
+## 백년가게 이력과 공통 카테고리
+
+```sh
+npm run import:century
+# 확실한 후보를 DB에 반영
+npm run import:century -- --apply
+```
+
+CSV 매칭과 Gemini는 `src/lib/taxonomy.ts`를 원본으로 생성한 공통 정의를 공유한다.
+수정 후 `npm run taxonomy:sync`로 Python용 JSON을 갱신하고
+`npm run taxonomy:check`로 일치 여부를 검증한다.
+2022년 CSV 수록 이력은 현재 인증 여부와 구분해 저장한다. AI 저장 함수를 포함한
+[SQL 적용 순서와 매칭 기준](docs/century-store-taxonomy.md)을 먼저 확인한다.
+
+## 잔여 백년가게 AI 후보 매칭
+
+```sh
+python scripts/century_ai_matching.py --prepare
+python scripts/century_ai_matching.py --limit 50 --slot manual
+```
+
+PM 비외식 사전으로 먼저 거르고, 동일 시군구의 상위 3개 후보만 심사한다.
+HTTP 재시도에도 4.5초 간격·15 RPM을 적용하며 회차당 50건/일일 최대 250건이다.
+[큐 보존, 새벽 스케줄 및 모델 설정](docs/century-ai-matching.md)을 참고한다.

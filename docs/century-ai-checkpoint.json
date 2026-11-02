@@ -1,0 +1,1671 @@
+{
+  "version": 1,
+  "source_count": 951,
+  "jobs": [
+    {
+      "csv_id": "3",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보들의 상호, 주소, 전화번호 등이 백년가게 정보와 일치하는 곳이 없습니다."
+      }
+    },
+    {
+      "csv_id": "5",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 업체명은 신내보리밥이고 주소는 개군면이나, 후보 1은 용문산보리밥이고 주소는 용문면으로 상호와 주소가 완전히 불일치함"
+      }
+    },
+    {
+      "csv_id": "19",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제공된 후보들 중 '새댁식육점'과 상호, 주소, 전화번호가 일치하는 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "31",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소가 완전히 일치하지 않으며 후보가 전혀 다른 업소입니다."
+      }
+    },
+    {
+      "csv_id": "35",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "후보 목록에 동해안횟집과 일치하는 상호나 주소, 전화번호를 가진 업소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "45",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소가 완전히 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "46",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보들의 상호(산마을우물가, 산마을민속촌)가 백년가게 업체명(빵굽는마을)과 전혀 일치하지 않으며 주소도 다름"
+      }
+    },
+    {
+      "csv_id": "48",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중에 신궁전가든과 일치하는 상호나 주소를 가진 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "52",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "2741570",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "상호와 도로명 주소(경기도 안성시 미양면 구례골길 170-17)가 완벽히 일치하여 동일한 사업체로 판단됩니다."
+      }
+    },
+    {
+      "csv_id": "61",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중에 백년가게 '순천복집'과 일치하는 상호나 주소를 가진 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "62",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 업체명과 후보의 상호가 다르며 주소와 연락처도 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "67",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제공된 후보 목록에 백년가게 '관광오리탕목포본점'과 일치하는 상호나 전화번호를 가진 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "69",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "134564",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게의 주소(충북 옥천군 군북면 성왕로 1564)와 후보 1의 도로명 주소가 완벽히 일치하며 상호도 '새강변식당'과 '새강변가든'으로 동일 업체의 명칭 변경으로 판단됩니다."
+      }
+    },
+    {
+      "csv_id": "73",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중에 상호와 주요사업이 일치하는 원조설렁탕이 없습니다."
+      }
+    },
+    {
+      "csv_id": "79",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게의 상호(동해관) 및 주소(교동)와 일치하는 후보 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "84",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 '마산족발'과 일치하는 상호, 주소, 연락처를 가진 후보 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "92",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "후보 중 백년가게 '문어랑새우횟집'의 상호 및 주소와 일치하는 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "94",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "3536882",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게의 상호, 기본주소(강원 강릉시 연곡면 홍질목길 55-11)와 후보 1번의 주소 및 명칭이 정확히 일치합니다."
+      }
+    },
+    {
+      "csv_id": "95",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 정보의 상호(황정숙본막국수) 및 주소(종합운동장길)와 일치하는 후보 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "96",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "2785710",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "상호와 도로명 주소(강원 춘천시 이디오피아길 7)가 완전히 일치하여 동일한 사업체임이 확실합니다."
+      }
+    },
+    {
+      "csv_id": "97",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 '협재가게'와 일치하는 상호와 주소를 가진 후보가 없습니다."
+      }
+    },
+    {
+      "csv_id": "102",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중에 백년가게 남천낙지와 일치하는 상호나 주소를 가진 사업체가 없습니다."
+      }
+    },
+    {
+      "csv_id": "105",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 정보의 하늘가든과 후보 장소인 하늘채까페는 상호와 주소가 완전히 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "110",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제공된 후보들 중 상호, 주소, 연락처가 일치하는 사업체가 없습니다."
+      }
+    },
+    {
+      "csv_id": "118",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보들의 상호와 주소가 백년가게 정보와 일치하는 곳이 없습니다."
+      }
+    },
+    {
+      "csv_id": "123",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "134601",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "상호와 도로명 주소가 정확히 일치하여 동일한 사업체로 판단됨."
+      }
+    },
+    {
+      "csv_id": "125",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 정보의 상호와 주소가 후보 목록의 어떤 장소와도 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "132",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "697191",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게 상호명 '낙원아구찜'이 후보 1의 상호 '옛날집낙원아구찜'에 포함되며, 도로명 주소(서울특별시 종로구 삼일대로 436)가 완벽히 일치하여 동일 사업체로 판단됨."
+      }
+    },
+    {
+      "csv_id": "153",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소, 주요사업이 전혀 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "157",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "135927",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게의 상호, 전화번호, 주소가 후보의 상호 및 도로명 주소와 정확히 일치합니다."
+      }
+    },
+    {
+      "csv_id": "160",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 황해횟집의 상호 및 주소와 일치하는 후보가 없습니다."
+      }
+    },
+    {
+      "csv_id": "165",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "3434388",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "상호와 도로명 주소가 정확히 일치하여 동일한 백년가게 사업체임을 확신할 수 있음."
+      }
+    },
+    {
+      "csv_id": "176",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "주어진 후보들 중 '안다미로&카페오리'와 상호, 주소, 전화번호가 일치하는 사업체가 없습니다."
+      }
+    },
+    {
+      "csv_id": "177",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소, 전화번호가 모두 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "181",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 관광 장소 후보들의 상호와 주소가 백년가게 정보와 일치하는 곳이 없습니다."
+      }
+    },
+    {
+      "csv_id": "182",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중 원조백년옻닭과 일치하는 상호, 주소, 전화번호를 가진 장소가 없습니다."
+      }
+    },
+    {
+      "csv_id": "183",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소가 완전히 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "184",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 관광 장소 후보들의 상호와 주소가 백년가게 정보와 일치하는 곳이 없습니다."
+      }
+    },
+    {
+      "csv_id": "199",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "3094022",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "상호와 주소(대구광역시 수성구 무학로17길 21)가 완전히 일치하여 동일한 사업체로 판단됨."
+      }
+    },
+    {
+      "csv_id": "200",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 대구수산과 후보인 오늘잡은소 대구칠곡점은 상호와 주소가 전혀 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "201",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "2841719",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게의 상호와 후보 1의 상호가 매우 유사하며, 도로명 주소가 대구광역시 달성군 옥포읍 옥포로 597로 완벽히 일치합니다."
+      }
+    },
+    {
+      "csv_id": "210",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "2842662",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게의 상호와 후보 1의 상호가 유사하고 도로명 주소가 정확히 일치합니다."
+      }
+    },
+    {
+      "csv_id": "218",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "840709",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "백년가게 업체명 '궁원(비원)'과 후보 '궁원'의 주소가 경상북도 구미시 금오산로 126으로 정확히 일치합니다."
+      }
+    },
+    {
+      "csv_id": "228",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "645102",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "상호명이 매우 유사하고 도로명 주소(상삼2길 13)가 거의 일치하며 동일한 흑염소 업종이므로 동일 사업체로 판단됨."
+      }
+    },
+    {
+      "csv_id": "247",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "백년가게 '자연가든'과 일치하는 상호, 주소, 전화번호를 가진 후보가 존재하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "248",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소, 전화번호가 모두 일치하지 않습니다."
+      }
+    },
+    {
+      "csv_id": "254",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중 청풍황금송어와 상호, 주소, 연락처가 일치하는 사업체가 없습니다."
+      }
+    },
+    {
+      "csv_id": "257",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "제시된 후보 중 강박사냉면숯불갈비와 상호 및 주소가 일치하는 사업체가 없습니다."
+      }
+    },
+    {
+      "csv_id": "263",
+      "status": "matched",
+      "attempts": 1,
+      "content_id": "699586",
+      "decision": {
+        "matched_index": 1,
+        "confidence": "HIGH",
+        "reason": "후보 1은 백년가게 상호 '청화집순대'와 이름의 핵심 부분('청화집')이 일치하고, 주소가 '충청남도 천안시 동남구 병천면 충절로 1749'로 완전히 일치하여 동일한 사업체로 확실합니다."
+      }
+    },
+    {
+      "csv_id": "264",
+      "status": "no_match",
+      "attempts": 1,
+      "decision": {
+        "matched_index": 0,
+        "confidence": "NONE",
+        "reason": "상호와 주소, 연락처가 일치하는 후보가 없습니다."
+      }
+    },
+    {
+      "csv_id": "265",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "272",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "275",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "278",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "281",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "283",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "288",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "290",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "293",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "319",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "320",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "321",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "324",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "325",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "327",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "336",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "344",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "348",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "350",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "357",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "362",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "376",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "377",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "378",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "379",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "380",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "388",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "393",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "405",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "412",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "416",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "418",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "421",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "426",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "429",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "435",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "441",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "450",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "452",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "454",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "459",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "472",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "475",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "488",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "490",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "502",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "503",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "508",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "511",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "514",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "517",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "518",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "523",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "532",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "535",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "547",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "563",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "577",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "582",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "592",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "594",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "596",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "598",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "601",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "607",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "613",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "617",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "619",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "620",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "623",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "626",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "654",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "658",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "662",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "666",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "676",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "680",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "688",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "697",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "700",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "708",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "715",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "728",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "730",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "738",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "748",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "749",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "751",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "761",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "762",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "763",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "766",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "788",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "794",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "802",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "805",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "809",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "814",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "817",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "820",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "824",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "826",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "829",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "847",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "853",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "861",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "862",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "863",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "868",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "878",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "891",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "894",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "910",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "925",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "926",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "939",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "941",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "943",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "966",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "973",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "974",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "979",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "984",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "993",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1006",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1013",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1014",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1021",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1026",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1030",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1035",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1037",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1039",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1043",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1055",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1065",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1069",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1074",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1078",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1080",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1081",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1085",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1094",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1095",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1106",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1109",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1116",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1118",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1124",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1137",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1139",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1140",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1141",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1147",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1148",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1152",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1154",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1156",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1174",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1176",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1185",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1199",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1234",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1242",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1244",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1245",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1253",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1257",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "1261",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "82",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "104",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "461",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "529",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "653",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "764",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "872",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "874",
+      "status": "pending",
+      "attempts": 0
+    },
+    {
+      "csv_id": "969",
+      "status": "pending",
+      "attempts": 0
+    }
+  ],
+  "seed_hash": "b31d89d3e76b10a4e386ffe7bc91c3ee9b0cf4c106e9fb66d9cf6d17763c2a1b",
+  "daily_usage": {
+    "2026-11-02": {
+      "started": 50,
+      "slots": {
+        "manual": 50
+      }
+    }
+  },
+  "request_times": [
+    1793620033.1030295,
+    1793620037.603449,
+    1793620042.1037216,
+    1793620046.6041608,
+    1793620051.1046355,
+    1793620055.6052082,
+    1793620060.1057017,
+    1793620064.6067708,
+    1793620069.1070945,
+    1793620073.6089053,
+    1793620078.1091075,
+    1793620082.6093664,
+    1793620087.10974,
+    1793620091.6104326
+  ],
+  "request_audit": [
+    1793619574.6983502,
+    1793619579.1987166,
+    1793619583.6993923,
+    1793619588.199727,
+    1793619592.700219,
+    1793619597.200942,
+    1793619601.7010927,
+    1793619606.2013457,
+    1793619610.701689,
+    1793619615.2022235,
+    1793619619.7026587,
+    1793619624.2029517,
+    1793619628.703122,
+    1793619864.7959971,
+    1793619869.2961266,
+    1793619873.7966661,
+    1793619878.297235,
+    1793619882.7973747,
+    1793619887.2978075,
+    1793619891.7981281,
+    1793619896.2985468,
+    1793619900.7988806,
+    1793619905.2994447,
+    1793619909.7994967,
+    1793619914.3001888,
+    1793619918.800523,
+    1793619923.300581,
+    1793619983.5408907,
+    1793619988.0412986,
+    1793619992.542091,
+    1793619997.0423348,
+    1793620001.5424788,
+    1793620006.043059,
+    1793620010.5478,
+    1793620015.0956016,
+    1793620019.6014683,
+    1793620024.102065,
+    1793620028.6027677,
+    1793620033.1030295,
+    1793620037.603449,
+    1793620042.1037216,
+    1793620046.6041608,
+    1793620051.1046355,
+    1793620055.6052082,
+    1793620060.1057017,
+    1793620064.6067708,
+    1793620069.1070945,
+    1793620073.6089053,
+    1793620078.1091075,
+    1793620082.6093664,
+    1793620087.10974,
+    1793620091.6104326
+  ],
+  "api_attempts": 52,
+  "cooldown_until": 1793619983.540405,
+  "deployment_pending_ids": [
+    "265",
+    "272",
+    "275",
+    "278",
+    "281",
+    "283",
+    "288",
+    "290",
+    "293",
+    "319",
+    "320",
+    "321",
+    "324",
+    "325",
+    "327",
+    "336",
+    "344",
+    "348",
+    "350",
+    "357",
+    "362",
+    "376",
+    "377",
+    "378",
+    "379",
+    "380",
+    "388",
+    "393",
+    "405",
+    "412",
+    "416",
+    "418",
+    "421",
+    "426",
+    "429",
+    "435",
+    "441",
+    "450",
+    "452",
+    "454",
+    "459",
+    "472",
+    "475",
+    "488",
+    "490",
+    "502",
+    "503",
+    "508",
+    "511",
+    "514",
+    "517",
+    "518",
+    "523",
+    "532",
+    "535",
+    "547",
+    "563",
+    "577",
+    "582",
+    "592",
+    "594",
+    "596",
+    "598",
+    "601",
+    "607",
+    "613",
+    "617",
+    "619",
+    "620",
+    "623",
+    "626",
+    "654",
+    "658",
+    "662",
+    "666",
+    "676",
+    "680",
+    "688",
+    "697",
+    "700",
+    "708",
+    "715",
+    "728",
+    "730",
+    "738",
+    "748",
+    "749",
+    "751",
+    "761",
+    "762",
+    "763",
+    "766",
+    "788",
+    "794",
+    "802",
+    "805",
+    "809",
+    "814",
+    "817",
+    "820",
+    "824",
+    "826",
+    "829",
+    "847",
+    "853",
+    "861",
+    "862",
+    "863",
+    "868",
+    "878",
+    "891",
+    "894",
+    "910",
+    "925",
+    "926",
+    "939",
+    "941",
+    "943",
+    "966",
+    "973",
+    "974",
+    "979",
+    "984",
+    "993",
+    "1006",
+    "1013",
+    "1014",
+    "1021",
+    "1026",
+    "1030",
+    "1035",
+    "1037",
+    "1039",
+    "1043",
+    "1055",
+    "1065",
+    "1069",
+    "1074",
+    "1078",
+    "1080",
+    "1081",
+    "1085",
+    "1094",
+    "1095",
+    "1106",
+    "1109",
+    "1116",
+    "1118",
+    "1124",
+    "1137",
+    "1139",
+    "1140",
+    "1141",
+    "1147",
+    "1148",
+    "1152",
+    "1154",
+    "1156",
+    "1174",
+    "1176",
+    "1185",
+    "1199",
+    "1234",
+    "1242",
+    "1244",
+    "1245",
+    "1253",
+    "1257",
+    "1261",
+    "82",
+    "104",
+    "461",
+    "529",
+    "653",
+    "764",
+    "872",
+    "874",
+    "969"
+  ]
+}

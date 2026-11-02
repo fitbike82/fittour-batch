@@ -12,6 +12,12 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/node/*.test.ts",
     "sync:daily-master": "tsx scripts/sync-daily-master.ts",
+    "analyze:db": "tsx scripts/analyze-db-taxonomy.ts",
+    "taxonomy:sync": "tsx scripts/export-taxonomy.ts",
+    "taxonomy:check": "tsx scripts/export-taxonomy.ts --check",
+    "import:century": "python scripts/import_century_stores.py",
+    "century:ai:prepare": "python scripts/century_ai_matching.py --prepare",
+    "century:ai:batch": "python scripts/century_ai_matching.py --limit 50",
     "sync:daily-tour": "tsx scripts/daily-tour-pipeline.ts --limit 10000",
     "batch:report": "tsx scripts/report-tour-batch.ts"
   },

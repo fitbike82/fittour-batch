@@ -24,6 +24,10 @@ try:
 except ModuleNotFoundError:
     from scripts.gemini_key_pool import KeyPool, discover_keys, mask_keys
 from bs4 import BeautifulSoup
+try:
+    from place_taxonomy import FIELDS as TAXONOMY_FIELDS, model_schema, model_instructions, validate_taxonomy
+except ModuleNotFoundError:
+    from scripts.place_taxonomy import FIELDS as TAXONOMY_FIELDS, model_schema, model_instructions, validate_taxonomy
 from dotenv import load_dotenv
 from supabase import create_client
 try:
@@ -424,6 +428,7 @@ class Gemini:
                 print(f'Gemini 일시 오류: {type(exc).__name__}',flush=True)
 
     def summarize(self,place,reviews):
+        place = {key: value for key, value in place.items() if key not in ('cat1', 'cat2', 'cat3')}
         self.last_model=None
         self.validation_events=[]
         self.repair_attempted=False
@@ -432,7 +437,16 @@ class Gemini:
                   'text':review_excerpt(r['text'], limit=3000)} for r in reviews[:10]]
         generation_config={'response_mime_type':'application/json'}
         catalog = evidence_catalog(reviews)
-        payload={'systemInstruction':{'parts':[{'text':SYSTEM}]},'contents':[{'parts':[{'text':json.dumps({'place':place,'reviews':reviews,'evidence_catalog':catalog},ensure_ascii=False)}]}],'generationConfig':{'responseMimeType':generation_config['response_mime_type'],'responseSchema':SCHEMA,'temperature':0.2}}
+        schema = deepcopy(SCHEMA)
+        taxonomy_schema = model_schema(place)
+        schema['properties'].update(taxonomy_schema)
+        schema['required'].extend(taxonomy_schema)
+
+        def validate_result(data):
+            if taxonomy_schema and any(field in data for field in TAXONOMY_FIELDS):
+                data.update(validate_taxonomy(data, place))
+            return validate_summary(data, reviews)
+        payload={'systemInstruction':{'parts':[{'text':SYSTEM + model_instructions(place)}]},'contents':[{'parts':[{'text':json.dumps({'place':place,'reviews':reviews,'evidence_catalog':catalog},ensure_ascii=False)}]}],'generationConfig':{'responseMimeType':generation_config['response_mime_type'],'responseSchema':schema,'temperature':0.2}}
         chain = MODEL_CHAIN if self.model == MODEL else ((self.model, 2),)
         quota_seen = False
         quota_start = self.quota_429_total
@@ -470,7 +484,7 @@ class Gemini:
                     self.validation_events.extend({**issue, 'generation': generation + 1} for issue in issues)
                     if generation == 0:
                         raise ValueError('Ungrounded evidence selection')
-                data=validate_summary(data,reviews)
+                data=validate_result(data)
                 return data,self.last_model
             except (ValueError, TypeError, KeyError, IndexError) as exc:
                 code = str(exc) if isinstance(exc, ValueError) and str(exc).startswith(('Invalid ', 'Ungrounded ', 'insufficient_evidence')) else 'Invalid response JSON'
@@ -482,7 +496,7 @@ class Gemini:
                     raise ValueError(code) from None
                 if generation == 0 and isinstance(data, dict):
                     try:
-                        validate_summary({**data,'pros':[],'cons':[]},reviews)
+                        validate_result({**data,'pros':[],'cons':[]})
                         initial_candidate=deepcopy(data)
                     except ValueError:
                         pass
@@ -501,7 +515,7 @@ class Gemini:
                                         self.validation_events.append({'generation':2,'field':field,'index':index,'code':'discarded_invalid_point'})
                                 candidate[field]=kept[:3 if field=='pros' else 5]
                             try:
-                                return validate_summary(candidate,reviews),self.last_model
+                                return validate_result(candidate),self.last_model
                             except ValueError:
                                 continue
                     raise ValueError(code) from None
@@ -518,7 +532,7 @@ def sample_places(db,sample,seed=None):
     for category,count in mix:
         candidates,offset=[],0
         while True:
-            rows=db.table('places').select('content_id,content_type_id,title,address').eq('is_active',True).eq('content_type_id',category).order('content_id').range(offset,offset+499).execute().data or []
+            rows=db.table('places').select('content_id,content_type_id,title,address,modified_time').eq('is_active',True).eq('content_type_id',category).order('content_id').range(offset,offset+499).execute().data or []
             candidates.extend(rows)
             if len(rows)<500: break
             offset+=500
@@ -537,8 +551,13 @@ def print_summary(place,data,reviews):
 
 def save_result(db,result):
     data,place=result['summary'],result['place']
+    if 'category_l1' in data:
+        data = {**data, **validate_taxonomy(data, place)}
     payload={'content_id':place['content_id'],'honest_summary':'\n'.join(data['summary_lines']),'pros':data['pros'],'cons':data['cons'],'visit_tips':data['visit_tips'],'source_reviews':[{k:r[k] for k in ('source_id','title','url','query')} for r in result['reviews']],'model':result['model'],'quality_status':'ready','updated_at':datetime.now(timezone.utc).isoformat()}
     db.table('place_ai_summaries').upsert(payload,on_conflict='content_id').execute()
+    if 'category_l1' in data:
+        db.rpc('apply_ai_place_taxonomy', {'p_content_id': place['content_id'],
+               'p_modified_time': place.get('modified_time'), 'p_taxonomy': data}).execute()
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)

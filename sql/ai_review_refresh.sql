@@ -153,6 +153,9 @@ begin
   values(job_content_id,input_modified_time,attempt,result_status,reason_code,model_name,diagnostics_data);
   -- Update the legacy flag first. The enqueue trigger sees true->true on a first
   -- exclusion/error and therefore cannot reset the attempt counter.
+  if result_status='ready' and summary_data ? 'category_l1' then
+    perform public.apply_ai_place_taxonomy(job_content_id,input_modified_time,summary_data);
+  end if;
   update public.places set needs_ai_summary=(result_status<>'ready' and attempt<2) where content_id=job_content_id;
   update public.ai_review_jobs set attempt_count=attempt,last_status=result_status,last_error_code=reason_code,
     attempted_at=now(),lease_token=null,leased_until=null,updated_at=now() where content_id=job_content_id;

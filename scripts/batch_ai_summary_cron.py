@@ -27,6 +27,10 @@ try:
     from review_evidence import basic_summary
 except ModuleNotFoundError:
     from scripts.review_evidence import basic_summary
+try:
+    from place_taxonomy import validate_taxonomy
+except ModuleNotFoundError:
+    from scripts.place_taxonomy import validate_taxonomy
 
 from pipeline_task2 import (
     Gemini, MODEL, MODEL_CHAIN, GeminiQuotaDeferred, GeminiCircuitOpen,
@@ -201,6 +205,22 @@ def review_region(db, place):
     return sido, sigungu
 
 
+def taxonomy_context(db, place):
+    # Claimed RPCs already return type/title; load only factual menu/business
+    # context. Do not send provider cat codes or infer certification from reviews.
+    if not place.get('claim_token'):
+        return place
+    rows = db.table('places').select('detail_intro,century_store_info').eq('content_id', place['content_id']).limit(1).execute().data or []
+    if not isinstance(rows, list) or not rows:
+        return place
+    intro = rows[0].get('detail_intro') or {}
+    info = rows[0].get('century_store_info') or {}
+    context = {key: intro[key] for key in ('firstmenu', 'treatmenu') if isinstance(intro, dict) and intro.get(key)}
+    if isinstance(info, dict) and info.get('business'):
+        context['business'] = info['business']
+    return {**place, 'business_context': context}
+
+
 def exclusion_category(reason):
     if reason == 'No unsponsored readable reviews':
         return 'no_usable_body'
@@ -262,6 +282,8 @@ def finish_queue(db, place):
 
 
 def persist(db, place, summary, reviews, status, model, reason=None, diagnostics=None):
+    if summary and 'category_l1' in summary:
+        summary = {**summary, **validate_taxonomy(summary, place)}
     if place.get('claim_token'):
         return bool(db.rpc('complete_ai_review_work', {
             'job_content_id': place['content_id'], 'claim_token': place['claim_token'],
@@ -280,6 +302,9 @@ def persist(db, place, summary, reviews, status, model, reason=None, diagnostics
             'reviews': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind', 'published_at', 'fetched_at') if k in r} for r in reviews]},
         'updated_at': datetime.now(timezone.utc).isoformat()}
     db.table('place_ai_summaries').upsert(payload, on_conflict='content_id').execute()
+    if summary and 'category_l1' in summary:
+        db.rpc('apply_ai_place_taxonomy', {'p_content_id': place['content_id'],
+               'p_modified_time': place.get('modified_time'), 'p_taxonomy': summary}).execute()
     # If the place changed during generation, leave the newly queued revision pending.
     return finish_queue(db, place)
 
@@ -396,7 +421,7 @@ def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.m
                     session.review_diagnostics['region_available'] = bool(sido or sigungu)
                     search_429_streak = 0
                     try:
-                        summary, model = generator.summarize({**place, 'sido': sido, 'sigungu': sigungu}, reviews)
+                        summary, model = generator.summarize({**taxonomy_context(db, place), 'sido': sido, 'sigungu': sigungu}, reviews)
                         status = 'ready'
                     except ValueError as exc:
                         reason = str(exc)

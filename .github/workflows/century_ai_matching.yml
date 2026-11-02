@@ -1,0 +1,145 @@
+name: Century store AI matching
+on:
+  schedule:
+    - cron: '0 17 * * *' # 02:00 KST
+    - cron: '0 19 * * *' # 04:00 KST
+    - cron: '30 19 * * *' # 04:30 KST
+    - cron: '30 20 * * *' # 05:30 KST
+    - cron: '30 21 * * *' # 06:30 KST
+  workflow_dispatch:
+    inputs:
+      summary_only:
+        description: 'Validate saved checkpoint and DB results without AI calls'
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  # Serialize against the existing review worker using the same Gemini projects.
+  group: ai-summary-batch
+  cancel-in-progress: false
+jobs:
+  match:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY_01: ${{ secrets.GEMINI_API_KEY_01 }}
+      GEMINI_API_KEY_02: ${{ secrets.GEMINI_API_KEY_02 }}
+      GEMINI_API_KEY_03: ${{ secrets.GEMINI_API_KEY_03 }}
+      CENTURY_MATCHING_MODEL: ${{ vars.CENTURY_MATCHING_MODEL || 'gemini-3.5-flash-lite' }}
+      GEMINI_KEY_POOL_STATE: artifacts/century-ai-matching/gemini-key-state.json
+      PYTHONUNBUFFERED: '1'
+      EVENT_NAME: ${{ github.event_name }}
+      SCHEDULE: ${{ github.event.schedule }}
+      SUMMARY_ONLY: ${{ inputs.summary_only || 'false' }}
+    steps:
+      - uses: actions/checkout@v4
+        id: checkout
+      - uses: actions/setup-python@v5
+        id: python
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-review.txt
+      - name: Install matching dependencies
+        id: dependencies
+        run: python -m pip install -r requirements-review.txt
+      - name: Check matching safeguards
+        id: tests
+        run: python -m unittest discover -s tests -p 'test_century_ai_matching.py' -v
+      - name: Find latest checkpoint on this branch
+        id: checkpoint
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          metadata=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=century-ai-matching-state&per_page=100")
+          run=$(jq -r --arg branch "$GITHUB_REF_NAME" '[.artifacts[] | select(.expired == false and .workflow_run.head_branch == $branch)] | sort_by(.created_at) | last | .workflow_run.id // empty' <<< "$metadata")
+          if [[ -z "$run" ]] && jq -e --arg branch "$GITHUB_REF_NAME" 'any(.artifacts[]; .workflow_run.head_branch == $branch)' <<< "$metadata" > /dev/null; then
+            echo '::error::Prior checkpoint exists but is unavailable; restore it before resuming.'
+            exit 1
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        id: restore
+        if: steps.checkpoint.outputs.run != ''
+        with:
+          name: century-ai-matching-state
+          path: artifacts/century-ai-matching
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.checkpoint.outputs.run }}
+      - name: Review at most fifty local candidates
+        id: batch
+        shell: bash
+        run: |
+          if [[ "$SUMMARY_ONLY" == true ]]; then
+            python scripts/century_ai_matching.py --summary-only
+            exit 0
+          fi
+          slot=manual
+          if [[ "$EVENT_NAME" == schedule ]]; then
+            case "$SCHEDULE" in
+              '0 17 * * *') slot=02:00 ;;
+              '0 19 * * *') slot=04:00 ;;
+              '30 19 * * *') slot=04:30 ;;
+              '30 20 * * *') slot=05:30 ;;
+              '30 21 * * *') slot=06:30 ;;
+              *) echo 'Unknown schedule'; exit 1 ;;
+            esac
+          fi
+          python scripts/century_ai_matching.py --limit 50 --slot "$slot"
+      - name: Verify cumulative results and publish morning summary
+        id: summary
+        if: always() && steps.batch.outcome != 'skipped' && hashFiles('artifacts/century-ai-matching/queue_ai_matching.json') != ''
+        run: |
+          python scripts/century_ai_matching.py --summary-only
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = json.loads(Path('artifacts/century-ai-matching/final_summary.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as output:
+              output.write('## Century store matching results\n\n```json\n' + json.dumps(result, ensure_ascii=False, indent=2) + '\n```\n')
+          PY
+      - name: Persist checkpoint and review results
+        id: persist
+        if: always() && steps.batch.outcome != 'skipped' && hashFiles('artifacts/century-ai-matching/queue_ai_matching.json') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: century-ai-matching-state
+          path: artifacts/century-ai-matching/*.json
+          if-no-files-found: error
+          retention-days: 90
+          overwrite: true
+      - name: Notify Telegram of workflow outcome
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          WORKFLOW_NAME: ${{ github.workflow }}
+          STEP_RESULTS: ${{ toJSON(steps) }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        shell: bash
+        run: |
+          if [[ -z "$TELEGRAM_BOT_TOKEN" || -z "$TELEGRAM_CHAT_ID" ]]; then
+            echo '::error::Telegram notification secrets are missing'
+            exit 1
+          fi
+          if [[ "$JOB_STATUS" == success ]]; then
+            message="✅ [FitTour] 배치 완료: $WORKFLOW_NAME"
+          else
+            failed_steps=$(jq -r 'to_entries | map(select(.value.outcome == "failure") | .key) | join(", ")' <<< "$STEP_RESULTS")
+            message="🚨 [FitTour] 배치 실패 경보: $WORKFLOW_NAME / ${failed_steps:-job} 단계 에러 발생"
+          fi
+          result=$(curl --silent --show-error --fail-with-body --retry 3 --connect-timeout 10 --max-time 30 \
+            --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=$message"$'\n'"$RUN_URL" \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage")
+          if ! jq -e '.ok == true' <<< "$result" > /dev/null; then
+            echo '::error::Telegram rejected the workflow notification'
+            exit 1
+          fi
