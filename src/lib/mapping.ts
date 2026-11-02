@@ -68,18 +68,18 @@ export function mapMaster(raw: Item, expectedCategory: number): Item {
 export type CourseStop = { subnum: number; subcontentid: string | null; subname: string;
   subdetailoverview: string | null; subdetailimg: string | null };
 export function courseStops(raw: Item[]): CourseStop[] {
-  const seen = new Set<number>();
-  const rows = raw.map(item => {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const rows = raw.map((item, index) => {
     const order = text(item.subnum);
-    const name = text(item.subname);
-    if (!order || !/^[0-9]+$/.test(order) || !Number.isSafeInteger(Number(order)) || !name || seen.has(Number(order))) {
-      throw new BatchError('invalid_course_stop');
-    }
-    seen.add(Number(order));
+    const name = text(item.subname) || `경유지 ${index + 1}`;
+    const parsedOrder = Number(order);
+    const validOrder = order && /^[0-9]+$/.test(order) && Number.isSafeInteger(parsedOrder);
     const subId = text(item.subcontentid, 50);
-    return { subnum: Number(order), subcontentid: subId && /^[0-9]+$/.test(subId) ? subId : null,
+    return { originalIndex: index, subnum: validOrder ? parsedOrder : index + 1,
+      subcontentid: subId && /^[0-9]+$/.test(subId) ? subId : null,
       subname: name, subdetailoverview: text(item.subdetailoverview), subdetailimg: text(item.subdetailimg, 2048) };
   });
-  // TourAPI may number from zero. Store a contiguous, explicit 1-based order.
-  return rows.sort((a, b) => a.subnum - b.subnum).map((row, index) => ({ ...row, subnum: index + 1 }));
+  // Repair invalid orders using source positions; ties retain their source order.
+  return rows.sort((a, b) => a.subnum - b.subnum || a.originalIndex - b.originalIndex)
+    .map(({ originalIndex, ...row }, index) => ({ ...row, subnum: index + 1 }));
 }

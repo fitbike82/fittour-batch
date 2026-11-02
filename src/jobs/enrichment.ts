@@ -12,11 +12,13 @@ const claimErrorCode = (error: unknown): string => error instanceof BatchError ?
 const retryableClaim = (code: string) => /^database_claim_(57014|transport|08[A-Z0-9]{3})$/.test(code);
 
 function validateDetail(page: Page): void {
-  if (!page || !Array.isArray(page.items) || page.items.length !== 1 || page.total !== 1) {
+  if (!page || !Array.isArray(page.items)) {
     throw new BatchError('missing_or_ambiguous_detail');
   }
   const item = page.items[0];
-  if (!item || typeof item !== 'object' || Array.isArray(item)) throw new BatchError('invalid_detail_item');
+  if (page.items.length && (!item || typeof item !== 'object' || Array.isArray(item))) {
+    throw new BatchError('invalid_detail_item');
+  }
 }
 
 export async function enrich(store: Store, api: TourSource,
@@ -87,18 +89,22 @@ export async function enrich(store: Store, api: TourSource,
           stage = 'validate';
           validateDetail(common);
           validateDetail(intro);
-          if (String(common.items[0].contentid) !== place.content_id ||
-              (intro.items[0].contentid != null && String(intro.items[0].contentid) !== place.content_id)) {
+          // Empty intro is valid public-data absence; retain the first revision
+          // when multiple entries are returned, without relying on totalCount.
+          const commonItem = common.items[0] ?? {};
+          const introItem = intro.items[0] ?? {};
+          if (String(commonItem.contentid) !== place.content_id ||
+              (introItem.contentid != null && String(introItem.contentid) !== place.content_id)) {
             throw new BatchError('detail_identity_mismatch');
           }
           stage = 'map';
-          const detail = sanitizeIntro(intro.items[0]);
+          const detail = sanitizeIntro(introItem);
           const course = place.content_type_id === '25' ? {
-            title: text(common.items[0].title) ?? place.title,
+            title: text(commonItem.title) ?? place.title,
             distance: text(detail.distance), taketime: text(detail.taketime), schedule: text(detail.schedule),
           } : null;
           if (course && !stops.length) throw new BatchError('empty_course');
-          const details = { overview: text(common.items[0].overview), intro: detail,
+          const details = { overview: text(commonItem.overview), intro: detail,
             course, stops: course ? courseStops(stops) : [] };
           stage = 'finish';
           const saved = await store.finish(place, details);

@@ -6,6 +6,31 @@ import { test } from 'node:test';
 import { BatchError, DailyBudget, QuotaStop, kstDay, type Budget } from '../../src/lib/budget.js';
 import { TourApi, type Item, type TourSource } from '../../src/lib/tour-api.js';
 import { CONTENT_TYPES, courseStops, mapMaster, sanitizeIntro, sanitizeDetails } from '../../src/lib/mapping.js';
+
+test('course stops repair malformed orders and missing names without dropping source rows', () => {
+  const raw = [
+    { subnum: '3', subname: 'third', subcontentid: '123' },
+    { subnum: '0', subname: 'zero first' },
+    { subnum: '0', subname: 'zero second' },
+    { subname: 'missing order' },
+    { subnum: '1.5', subname: 'fraction' },
+    { subnum: '-1', subname: 'negative' },
+    { subnum: '9007199254740992', subname: 'unsafe' },
+    { subnum: 'NaN', subname: '   ', subcontentid: 'bad-id' },
+  ];
+  const before = JSON.stringify(raw);
+  const repaired = courseStops(raw);
+  assert.deepEqual(repaired.map(s => s.subname), [
+    'zero first', 'zero second', 'third', 'missing order', 'fraction', 'negative', 'unsafe', '경유지 8',
+  ]);
+  assert.deepEqual(repaired.map(s => s.subnum), [1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(repaired[2].subcontentid, '123');
+  assert.equal(repaired[7].subcontentid, null);
+  assert.ok(repaired.every(s => !('originalIndex' in s)));
+  assert.equal(JSON.stringify(raw), before);
+  assert.deepEqual(courseStops([]), []);
+  assert.deepEqual(courseStops(null as unknown as Parameters<typeof courseStops>[0]), []);
+});
 import type { Counts, Details, Place, Store } from '../../src/lib/store.js';
 import { syncMaster } from '../../scripts/sync-master-catalog.js';
 import { enrich } from '../../src/jobs/enrichment.js';
@@ -126,7 +151,41 @@ test('course enrichment gathers every page, sorts stops, and writes completion o
   assert.deepEqual(store.saved[0].details.stops.map(s => s.subname), ['First', 'Middle', 'Last']);
   assert.deepEqual(store.saved[0].details.stops.map(s => s.subnum), [1, 2, 3]);
   assert.equal(store.saved[0].details.course?.distance, '3km');
-  assert.throws(() => courseStops([{ subnum: '0', subname: 'a' }, { subnum: '0', subname: 'b' }]), /invalid_course_stop/);
+  assert.deepEqual(courseStops([{ subnum: '0', subname: 'a' }, { subnum: '0', subname: 'b' }])
+    .map(s => [s.subnum, s.subname]), [[1, 'a'], [2, 'b']]);
+});
+
+test('empty and multiple intros complete using common data and the first intro', async () => {
+  for (const intro of [ok([]), ok([], 7), ok([
+    { contentid: '28', restdateleports: 'Monday' },
+    { contentid: '28', restdateleports: 'Tuesday' },
+  ])]) {
+    const store = new MemoryStore([place('28', '28')]);
+    const result = await enrich(store, { async page(endpoint) {
+      return endpoint === 'detailIntro2' ? intro : ok([{ contentid: '28', overview: 'Common overview' }]);
+    } }, undefined, quiet);
+    assert.deepEqual(result, { claimed: 1, completed: 1, failed: 0, deferred: false });
+    assert.equal(store.saved[0].details.overview, 'Common overview');
+    assert.deepEqual(store.saved[0].details.intro, intro.items[0] ?? {});
+    assert.deepEqual(store.released, []);
+  }
+});
+
+test('malformed intros and mismatched identities still cannot complete', async () => {
+  for (const intro of [null, { items: null, total: 0 }, ok([null as unknown as Item]),
+    ok([{ contentid: 'other' }])]) {
+    const store = new MemoryStore([place('28', '28')]);
+    const result = await enrich(store, { async page(endpoint) {
+      return endpoint === 'detailIntro2' ? intro as Awaited<ReturnType<TourSource['page']>>
+        : ok([{ contentid: '28' }]);
+    } }, undefined, quiet);
+    assert.equal(result.failed, 1);
+    assert.equal(store.saved.length, 0);
+  }
+  const store = new MemoryStore([place('28', '28')]);
+  const result = await enrich(store, { async page() { return ok([]); } }, undefined, quiet);
+  assert.equal(result.failed, 1); // A missing common identity cannot establish this place.
+  assert.equal(store.saved.length, 0);
 });
 
 test('bad detail fails only its place and quota deferral releases every remaining claim', async () => {

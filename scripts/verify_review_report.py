@@ -14,7 +14,13 @@ def main():
     report = json.loads(path.read_text(encoding='utf-8'))
     print(json.dumps({key: report.get(key) for key in (
         'selected', 'processed', 'success', 'excluded', 'errors', 'release_errors',
-        'quota_deferred', 'quota_stopped', 'stop_reason')}, ensure_ascii=True))
+        'quota_deferred', 'quota_stopped', 'stop_reason', 'refresh_queue',
+        'basic_info', 'review_analysis', 'basic_info_reasons')}, ensure_ascii=True))
+    if report.get('fatal'):
+        raise SystemExit('Batch terminated before completion; inspect the report')
+    refresh = report.get('refresh_queue') or {}
+    if refresh.get('status') in ('deferred', 'busy'):
+        print('WARNING: queue maintenance incomplete; existing queued work was attempted')
     quota_only = (args.allow_quota_stop and report.get('quota_stopped', False)
                   and report.get('stop_reason') == 'daily_quota_exceeded'
                   and not report.get('errors', 0) and not report.get('release_errors', 0))

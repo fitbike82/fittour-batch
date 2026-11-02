@@ -49,6 +49,18 @@ test('review refresh covers empty points, initial work barrier, history and pres
     await db.exec("update public.places set modified_time='v2' where content_id='a'");
     assert.equal((await claim())[0].content_id,'a');
     assert.equal(await finish(row,'ready','stale worker'),false);
+    // Coverage maintenance exits before scanning/bootstrap while work remains.
+    await db.exec(`insert into public.places(content_id,title,modified_time,is_active,needs_ai_summary)
+      select 'missing-'||g,'New place','v1',true,false from generate_series(1,7) g;
+      delete from public.ai_review_jobs where content_id like 'missing-%';`);
+    assert.equal(await due(), 0);
+    assert.equal((await db.query<{n:number}>("select count(*)::int n from public.ai_review_jobs where content_id like 'missing-%'")).rows[0].n,0);
+    await db.exec("update public.ai_review_jobs set last_status='ready',attempt_count=1,leased_until=null,lease_token=null");
+    await db.query('select public.enqueue_due_ai_reviews(2,180)');
+    assert.equal((await db.query<{n:number}>("select count(*)::int n from public.ai_review_jobs where content_id like 'missing-%'")).rows[0].n,2);
+    // An unchanged revision reactivated after deactivation must be queued again.
+    await db.exec("update public.places set is_active=false where content_id='b'; update public.places set is_active=true where content_id='b'");
+    assert.equal((await db.query<{last_status:string}>("select last_status from public.ai_review_jobs where content_id='b'")).rows[0].last_status,'pending');
     await db.exec('set role anon');
     await assert.rejects(db.query('select public.enqueue_due_ai_reviews(50,180)'));
     await assert.rejects(db.query('select * from public.ai_review_summary_history'));

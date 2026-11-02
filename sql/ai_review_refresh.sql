@@ -29,6 +29,11 @@ for each row execute function public.archive_ai_review_summary();
 revoke all on function public.archive_ai_review_summary() from public,anon,authenticated;
 grant execute on function public.archive_ai_review_summary() to service_role;
 
+-- Bound bootstrap probes by active place ID; exclude existing jobs before INSERT
+-- so completed and leased jobs are never repeatedly written/conflict-checked.
+create index if not exists places_ai_review_active_id_idx
+  on public.places(content_id) where is_active;
+
 create or replace function public.enqueue_due_ai_reviews(batch_limit integer default 50,refresh_days integer default 180)
 returns integer language plpgsql security invoker set search_path='' as $$
 declare affected integer;
@@ -36,12 +41,21 @@ begin
   if batch_limit is null or batch_limit not between 1 and 120 or refresh_days is null or refresh_days not between 1 and 3650 then
     raise exception 'Invalid refresh configuration' using errcode='22023';
   end if;
-  perform pg_advisory_xact_lock(62020120);
+  -- Maintenance yields to other queue work instead of waiting until timeout.
+  if not pg_try_advisory_xact_lock(62020120) then return -1; end if;
+  -- During coverage runs, maintenance has nothing to add. Avoid scanning the
+  -- complete place/summary tables on every hourly invocation.
+  if exists(select 1 from public.ai_review_jobs j join public.places p using(content_id)
+    where p.is_active and j.last_status<>'ready' and j.attempt_count<2
+      and p.modified_time::text is not distinct from j.input_modified_time) then return 0; end if;
   -- Bootstrap missing jobs, including newly active places. Coverage takes priority.
   insert into public.ai_review_jobs(content_id,input_modified_time)
   select p.content_id,p.modified_time::text from public.places p
   left join public.place_ai_summaries s using(content_id)
+  left join public.ai_review_jobs existing using(content_id)
   where p.is_active and (s.content_id is null or p.needs_ai_summary)
+    and existing.content_id is null
+  order by p.content_id limit batch_limit
   on conflict(content_id) do nothing;
   if exists(select 1 from public.ai_review_jobs j join public.places p using(content_id)
     where p.is_active and j.last_status<>'ready' and j.attempt_count<2
@@ -72,7 +86,8 @@ create or replace function public.enqueue_ai_review_revision()
 returns trigger language plpgsql security invoker set search_path='' as $$
 begin
   if new.is_active then
-    if tg_op='INSERT' or new.modified_time is distinct from old.modified_time
+    if tg_op='INSERT' or not coalesce(old.is_active,false)
+      or new.modified_time is distinct from old.modified_time
       or new.title is distinct from old.title or new.address is distinct from old.address
       or new.content_type_id is distinct from old.content_type_id
       or (not coalesce(old.needs_ai_summary,false) and new.needs_ai_summary) then

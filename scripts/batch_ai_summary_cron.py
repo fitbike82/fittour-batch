@@ -226,6 +226,33 @@ def pending_places(db, limit):
             time.sleep(2 ** attempt)
 
 
+def refresh_queue(db, limit, refresh_days, sleep=time.sleep):
+    """Maintenance must not prevent processing already queued work.
+
+    Retry only explicit transaction aborts. Transport failures have an unknown
+    commit outcome and must not trigger another enqueue request.
+    """
+    diagnostics = {'status': 'deferred', 'attempts': 0, 'errors': []}
+    for attempt in range(3):
+        diagnostics['attempts'] += 1
+        try:
+            affected = db.rpc('enqueue_due_ai_reviews', {
+                'batch_limit': max(1, limit // (2 ** attempt)),
+                'refresh_days': refresh_days,
+            }).execute().data
+            diagnostics.update(status='busy' if affected == -1 else 'ok', enqueued=affected)
+            return diagnostics
+        except APIError as exc:
+            code = str(getattr(exc, 'code', '') or '')
+            if code not in ('57014', '40001', '40P01', '55P03'):
+                raise
+            diagnostics['errors'].append(safe_error_code(exc))
+            LOG.warning('stage=refresh_queue attempt=%s code=%s', attempt + 1, safe_error_code(exc))
+            if attempt < 2:
+                sleep(2 ** attempt)
+    return diagnostics
+
+
 def finish_queue(db, place):
     query = db.table('places').update({'needs_ai_summary': False}) \
         .eq('content_id', place['content_id']).eq('needs_ai_summary', True).eq('is_active', True)
@@ -324,6 +351,9 @@ def write_report(path, counts):
                           if e.get('reason') == 'No unsponsored readable reviews' else exclusion_category(e.get('reason')))
                          for e in counts.get('events', []) if e.get('status') == 'insufficient')
     failures = Counter(e.get('reason', 'unknown') for e in counts.get('events', []) if e.get('status') == 'error')
+    fallbacks = Counter(exclusion_category(e.get('reason')) for e in counts.get('events', [])
+                        if e.get('status') == 'ready'
+                        and e.get('diagnostics', {}).get('analysis_basis') == 'basic_info')
     filtered, article_errors, search_errors = Counter(), Counter(), Counter()
     for event in counts.get('events', []):
         diagnostics = event.get('diagnostics') or {}
@@ -332,15 +362,18 @@ def write_report(path, counts):
         search_errors.update(diagnostics.get('search_errors', {}))
     path.write_text(json.dumps({'checked_at': datetime.now(timezone.utc).isoformat(), **counts,
                                'exclusion_reasons': dict(exclusions), 'failure_reasons': dict(failures),
+                               'basic_info_reasons': dict(fallbacks),
                                'body_filter_reasons': dict(filtered), 'article_errors': dict(article_errors),
                                'search_errors': dict(search_errors)},
                                ensure_ascii=False, indent=2), encoding='utf-8')
 
 
-def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.monotonic, report_path=None):
+def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.monotonic, report_path=None, refresh_status=None):
     started = clock()
     counts = {'processed': 0, 'success': 0, 'excluded': 0, 'errors': 0, 'deferred': 0, 'quota_deferred': 0, 'quota_stopped': False, 'places_started': 0,
               'basic_info': 0, 'review_analysis': 0}
+    if refresh_status is not None:
+        counts['refresh_queue'] = refresh_status
     places = pending_places(db, limit)
     counts.update(selected=len(places), pass_number=places[0].get('attempt_number', 1) if places else None,
                   events=[], release_errors=0)
@@ -487,6 +520,8 @@ def main():
         parser.error('--limit must be between 1 and 50')
     if not 1 <= args.refresh_days <= 3650:
         parser.error('--refresh-days must be between 1 and 3650')
+    if not 1 <= args.timeout <= 1800:
+        parser.error('--timeout must be between 1 and 1800')
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     load_dotenv()
@@ -494,6 +529,7 @@ def main():
     logging.getLogger('httpx').setLevel(logging.WARNING)
     setup_masking()
     stage = 'configuration'
+    refresh = None
     try:
         key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
         kakao = os.getenv('KAKAO_REST_API_KEY') or os.getenv('KAKAO_API_KEY')
@@ -504,14 +540,18 @@ def main():
         stage = 'preflight'
         db.table('place_ai_summaries').select('content_id,quality_status,source_reviews').limit(1).execute()
         stage = 'refresh_queue'
-        db.rpc('enqueue_due_ai_reviews', {'batch_limit': args.limit, 'refresh_days': args.refresh_days}).execute()
         deadline = time.monotonic() + args.timeout
         sleep = lambda seconds: budget_sleep(seconds, deadline)
+        refresh = refresh_queue(db, args.limit, args.refresh_days, sleep=sleep)
         with BudgetSession(deadline) as session:
             generator = Gemini(session, sleep=sleep,
                                min_interval=5, max_rpm=12)
             stage = 'claim_or_process'
-            counts = run(db, session, generator, kakao, args.limit, sleep=sleep, report_path=args.report)
+            counts = run(db, session, generator, kakao, args.limit, sleep=sleep, report_path=args.report,
+                         refresh_status=refresh)
+        counts['refresh_queue'] = refresh
+        if refresh['status'] != 'ok' and not counts['selected']:
+            counts.update(deferred=1, stop_reason='refresh_queue_deferred')
         write_report(args.report, counts)
         message = ('[LocalTripAI] AI 리뷰 배치\n'
                    f"처리 회차: {counts['pass_number'] or '-'} / 선정: {counts['selected']}\n"
@@ -521,6 +561,7 @@ def main():
                    f"한도 이월(시도 차감 없음): {counts['quota_deferred']} / 429 응답: {counts.get('quota_429_total',0)}회\n"
                    f"중단 사유: {counts.get('stop_reason','선정 대상 처리 완료')}\n"
                    '1차 제외·오류는 전체 1차 종료 후 1회 재시도, 2차 실패는 점검 대상으로 보존합니다.')
+        message += f"\n큐 갱신: {refresh['status']} / 시도: {refresh['attempts']}"
         LOG.info(message)
         summary_path=os.environ.get('GITHUB_STEP_SUMMARY')
         if summary_path:
@@ -536,7 +577,8 @@ def main():
     except Exception as exc:
         code = safe_error_code(exc)
         LOG.error('AI batch failed: stage=%s code=%s', stage, code)
-        write_report(args.report, {'errors': 1, 'fatal': True, 'stage': stage, 'stop_reason': code})
+        write_report(args.report, {'errors': 1, 'fatal': True, 'stage': stage, 'stop_reason': code,
+                                   'refresh_queue': refresh})
         notify('[LocalTripAI] AI 리뷰 배치 실행 실패: ' + code)
         return 1
 
