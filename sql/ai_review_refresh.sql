@@ -33,9 +33,15 @@ grant execute on function public.archive_ai_review_summary() to service_role;
 -- so completed and leased jobs are never repeatedly written/conflict-checked.
 create index if not exists places_ai_review_active_id_idx
   on public.places(content_id) where is_active;
+-- Also ensure the queue's original partial index exists when applying this
+-- standalone deployment patch. Not evidence of an index missing in production.
+create index if not exists ai_review_jobs_pending_idx
+  on public.ai_review_jobs(attempt_count,content_id)
+  where attempt_count < 2 and last_status <> 'ready';
 
 create or replace function public.enqueue_due_ai_reviews(batch_limit integer default 50,refresh_days integer default 180)
-returns integer language plpgsql security invoker set search_path='' as $$
+returns integer language plpgsql security invoker set search_path=''
+set lock_timeout='2s' as $$
 declare affected integer;
 begin
   if batch_limit is null or batch_limit not between 1 and 120 or refresh_days is null or refresh_days not between 1 and 3650 then

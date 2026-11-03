@@ -324,6 +324,38 @@ def quota_details(response):
     return result
 
 
+def api_error_details(response):
+    """Bounded provider diagnostics; never log request bodies or credentials."""
+    try:
+        error = response.json().get('error', {})
+        if not isinstance(error, dict):
+            return {}
+        return {key: mask_sensitive(str(error[key]))[:2000]
+                for key in ('code', 'status', 'message') if key in error}
+    except (ValueError, AttributeError, TypeError):
+        return {}
+
+
+def json_response_schema(value):
+    """Convert the legacy OpenAPI Schema to standard JSON Schema for REST.
+
+    responseJsonSchema uses lowercase types and JSON null, not nullable=true.
+    Keep the application-side taxonomy/evidence validation unchanged.
+    """
+    if isinstance(value, list):
+        return [json_response_schema(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+    result = {key: json_response_schema(item) for key, item in value.items() if key != 'nullable'}
+    if isinstance(value.get('type'), str):
+        result['type'] = value['type'].lower()
+    if value.get('nullable'):
+        result['type'] = [result['type'], 'null']
+        if 'enum' in result:
+            result['enum'] = result['enum'] + [None]
+    return result
+
+
 class Gemini:
     def __init__(self,session,key=None,model=MODEL,sleep=time.sleep,clock=time.monotonic,min_interval=0,max_rpm=15,quota_stop_after=20):
         self.pool = KeyPool() if key is None else None
@@ -370,7 +402,14 @@ class Gemini:
                     self.request_events[-1]['key_id'] = label
                 print(f'Gemini {label} quota circuit open; trying next key', flush=True)
                 self.pool.exhaust(daily=getattr(exc, 'daily', False))
-        raise GeminiDailyQuotaExhausted('All configured Gemini keys exhausted')
+            except (GeminiRequestFailed, NotFound):
+                if self.request_events:
+                    self.request_events[-1]['key_id'] = label
+                raise
+        failure = GeminiDailyQuotaExhausted('All configured Gemini keys temporarily blocked')
+        failure.stop_reason = ('daily_quota_exceeded' if len(self.pool.daily_blocked) == len(self.pool.keys)
+                               else 'key_pool_exhausted')
+        raise failure
 
     def _request_single(self,model,payload,max_retries=1):
         if self.consecutive_429 >= self.quota_stop_after:
@@ -402,11 +441,15 @@ class Gemini:
                 code=getattr(exc,'code',None)
                 event={'model':model,'status':code,'error_type':type(exc).__name__,
                        'elapsed_seconds':round(self.clock()-started,3)}
+                if response is not None:
+                    event['provider_error'] = api_error_details(response)
                 if code==429:
                     self.quota_429_total+=1
                     self.consecutive_429+=1
                     if response is not None:
                         event['quota']=quota_details(response)
+                else:
+                    self.consecutive_429=0
                 self.request_events.append(event)
                 print(mask_sensitive(json.dumps({'gemini_request':event, 'consecutive_429':self.consecutive_429})),flush=True)
                 if code==429 and self.pool is not None:
@@ -446,8 +489,16 @@ class Gemini:
             if taxonomy_schema and any(field in data for field in TAXONOMY_FIELDS):
                 data.update(validate_taxonomy(data, place))
             return validate_summary(data, reviews)
-        payload={'systemInstruction':{'parts':[{'text':SYSTEM + model_instructions(place)}]},'contents':[{'parts':[{'text':json.dumps({'place':place,'reviews':reviews,'evidence_catalog':catalog},ensure_ascii=False)}]}],'generationConfig':{'responseMimeType':generation_config['response_mime_type'],'responseSchema':schema,'temperature':0.2}}
-        chain = MODEL_CHAIN if self.model == MODEL else ((self.model, 2),)
+        wire_schema = json_response_schema(schema)
+        # The large enum inside a bounded tag array causes INVALID_ARGUMENT on
+        # the live API. Keep the whitelist in instructions + server validation;
+        # the wire schema still enforces string-array type and maxItems.
+        tag_rules = ''
+        if taxonomy_schema:
+            allowed_tags = wire_schema['properties']['filter_tags']['items'].pop('enum')
+            tag_rules = '\nfilter_tags 허용값: ' + json.dumps(allowed_tags, ensure_ascii=False)
+        payload={'systemInstruction':{'parts':[{'text':SYSTEM + model_instructions(place) + tag_rules}]},'contents':[{'role':'user','parts':[{'text':json.dumps({'place':place,'reviews':reviews,'evidence_catalog':catalog},ensure_ascii=False)}]}],'generationConfig':{'responseMimeType':generation_config['response_mime_type'],'responseJsonSchema':wire_schema,'temperature':0.2}}
+        chain = getattr(self, 'model_chain', None) or (MODEL_CHAIN if self.model == MODEL else ((self.model, 2),))
         quota_seen = False
         quota_start = self.quota_429_total
         last_error = None

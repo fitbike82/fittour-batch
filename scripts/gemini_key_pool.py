@@ -3,6 +3,7 @@ import os
 import re
 import json
 import hashlib
+import math
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -62,20 +63,63 @@ class KeyPool:
         self.index = next((i for i, (label, _) in enumerate(self.keys) if label == preferred), (ordinal-1)%len(self.keys))
         self.blocked = set()
         self.daily_blocked = set()
+        self.blocked_at = {}
+        self.now = (lambda: now) if now is not None else lambda: datetime.now(timezone.utc)
+        self.ttl_seconds = float(env.get('GEMINI_QUOTA_BLOCK_TTL_SECONDS', '14400'))
+        if not math.isfinite(self.ttl_seconds) or not 60 <= self.ttl_seconds <= 86400:
+            raise ValueError('GEMINI_QUOTA_BLOCK_TTL_SECONDS must be 60..86400')
         self.day = quota_day(now)
         self.state_path = Path(env['GEMINI_KEY_POOL_STATE']) if env.get('GEMINI_KEY_POOL_STATE') else None
         self.fingerprints = [hashlib.sha256(value.encode()).hexdigest() for _, value in self.keys]
         if self.state_path:
             try:
                 state = json.loads(self.state_path.read_text(encoding='utf-8'))
-                if state.get('version') == 1 and state.get('day') == self.day:
-                    self.daily_blocked = {i for i, digest in enumerate(self.fingerprints) if digest in state.get('exhausted', [])}
+                if state.get('version') in (1, 2) and state.get('day') == self.day:
+                    timestamps = state.get('blocked_at', {})
+                    # v1 lacked timestamps: use cache file age, never an infinite lock.
+                    legacy_time = self.state_path.stat().st_mtime
+                    self.blocked_at = {i: float(timestamps.get(digest, legacy_time))
+                                       for i, digest in enumerate(self.fingerprints)
+                                       if digest in state.get('exhausted', [])}
+                    self.daily_blocked = set(self.blocked_at)
                     self.blocked.update(self.daily_blocked)
             except (OSError, ValueError, TypeError, AttributeError):
                 pass
+        self._refresh()
 
+    def _save(self):
+        if self.state_path:
+            try:
+                self.state_path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = self.state_path.with_suffix('.tmp')
+                temporary.write_text(json.dumps({'version': 2, 'day': self.day,
+                    'exhausted': sorted(self.fingerprints[i] for i in self.daily_blocked),
+                    'blocked_at': {self.fingerprints[i]: self.blocked_at[i] for i in self.daily_blocked}}), encoding='utf-8')
+                temporary.replace(self.state_path)
+            except OSError:
+                print('Gemini key state unavailable; using in-process circuit only', flush=True)
+
+    def _refresh(self):
+        now = self.now()
+        if quota_day(now) != self.day:
+            self.day = quota_day(now)
+            self.blocked.clear()
+            self.daily_blocked.clear()
+            self.blocked_at.clear()
+            self._save()
+            return
+        expired = {i for i, timestamp in self.blocked_at.items()
+                   if not math.isfinite(timestamp) or timestamp > now.timestamp()
+                   or now.timestamp() - timestamp >= self.ttl_seconds}
+        if expired:
+            self.blocked.difference_update(expired)
+            self.daily_blocked.difference_update(expired)
+            for i in expired:
+                self.blocked_at.pop(i, None)
+            self._save()
 
     def current(self):
+        self._refresh()
         for offset in range(len(self.keys)):
             index = (self.index + offset) % len(self.keys)
             if index not in self.blocked:
@@ -84,16 +128,22 @@ class KeyPool:
         return None
 
     def exhaust(self, daily=False):
+        self._refresh()
         self.blocked.add(self.index)
         if daily:
             self.daily_blocked.add(self.index)
-            if self.state_path:
-                try:
-                    self.state_path.parent.mkdir(parents=True, exist_ok=True)
-                    temporary = self.state_path.with_suffix('.tmp')
-                    temporary.write_text(json.dumps({'version': 1, 'day': self.day,
-                        'exhausted': sorted(self.fingerprints[i] for i in self.daily_blocked)}), encoding='utf-8')
-                    temporary.replace(self.state_path)
-                except OSError:
-                    print('Gemini key state unavailable; using in-process circuit only', flush=True)
+            self.blocked_at[self.index] = self.now().timestamp()
+            self._save()
         self.index = (self.index + 1) % len(self.keys)
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description='Reset only the local Gemini quota circuit state; no API calls.')
+    parser.add_argument('--reset-state', type=Path, required=True)
+    args = parser.parse_args()
+    # Persist an empty current-day state so Actions saves a replacement cache.
+    args.reset_state.parent.mkdir(parents=True, exist_ok=True)
+    args.reset_state.write_text(json.dumps({'version': 2, 'day': quota_day(),
+        'exhausted': [], 'blocked_at': {}}), encoding='utf-8')
+    print('Gemini quota circuit reset; provider quota itself is unchanged.')

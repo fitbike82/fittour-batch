@@ -65,3 +65,4 @@ supabase/migrations/*
 !docs/century-ai-matching.md
 !docs/unmatched_century_stores.json
 !docs/century-ai-checkpoint.json
+!docs/ai-review-recovery-2026-11-03.md

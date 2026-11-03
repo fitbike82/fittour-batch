@@ -64,8 +64,11 @@ class PlaceTaxonomyTests(unittest.TestCase):
         generator = Gemini(session, 'test-key', min_interval=0, max_rpm=100)
         result, _ = generator.summarize(self.place(cat1='DO_NOT_SEND'), [{'source_id': 1, 'text': '갈비와 냉면을 판매하는 식당입니다.'}])
         self.assertEqual(result['filter_tags'], ['갈비', '냉면'])
-        schema = session.post.call_args.kwargs['json']['generationConfig']['responseSchema']
+        schema = session.post.call_args.kwargs['json']['generationConfig']['responseJsonSchema']
         self.assertEqual(schema['properties']['category_l1']['enum'], ['음식점', '카페/디저트'])
+        self.assertNotIn('enum', schema['properties']['filter_tags']['items'])
+        self.assertEqual(schema['properties']['filter_tags']['maxItems'], 12)
+        self.assertIn('filter_tags 허용값', session.post.call_args.kwargs['json']['systemInstruction']['parts'][0]['text'])
         self.assertEqual(model_schema(self.place())['category_l2']['nullable'], True)
         self.assertNotIn('DO_NOT_SEND', json.dumps(session.post.call_args.kwargs['json']))
 

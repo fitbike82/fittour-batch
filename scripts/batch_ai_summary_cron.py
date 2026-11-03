@@ -457,15 +457,16 @@ def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.m
                 break
             except Exception as exc:
                 if isinstance(exc, GeminiDailyQuotaExhausted):
+                    stop_reason = getattr(exc, 'stop_reason', 'daily_quota_exceeded')
                     counts['quota_deferred'] += 1
                     counts['deferred'] += 1
                     counts['quota_stopped'] = True
-                    counts['stop_reason'] = 'daily_quota_exceeded'
+                    counts['stop_reason'] = stop_reason
                     counts['deferred'] += len(places) - index - 1
                     counts['events'].append({'content_id': place['content_id'], 'status': 'quota_deferred',
-                        'attempt_number': place.get('attempt_number', 1), 'reason': 'daily_quota_exceeded',
+                        'attempt_number': place.get('attempt_number', 1), 'reason': stop_reason,
                         'committed': False, 'diagnostics': session.review_diagnostics})
-                    LOG.warning('content_id=%s quota_deferred=True daily_quota_exceeded=True', place['content_id'])
+                    LOG.warning('content_id=%s quota_deferred=True reason=%s', place['content_id'], stop_reason)
                     break
                 http_quota = (isinstance(exc, requests.RequestException) and exc.response is not None
                               and exc.response.status_code == 429)

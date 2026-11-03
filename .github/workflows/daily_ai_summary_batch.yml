@@ -11,6 +11,10 @@ on:
         type: choice
         options: ['1', '5', '10', '50']
         default: '1'
+      reset_quota_state:
+        description: 'Clear restored Gemini circuit state once (provider quota is unchanged)'
+        type: boolean
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -36,6 +40,7 @@ jobs:
       AI_REVIEW_REFRESH_DAYS: ${{ vars.AI_REVIEW_REFRESH_DAYS || '180' }}
       PYTHONUNBUFFERED: '1'
       GEMINI_KEY_POOL_STATE: artifacts/gemini-key-pool/state.json
+      GEMINI_QUOTA_BLOCK_TTL_SECONDS: '14400'
       TELEGRAM_BOT_TOKEN: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_BOT_TOKEN || '' }}
       TELEGRAM_CHAT_ID: ${{ vars.BATCH_NOTIFICATIONS_ENABLED == 'true' && secrets.TELEGRAM_CHAT_ID || '' }}
     steps:
@@ -65,11 +70,16 @@ jobs:
       - name: Summarize a bounded batch of queued places
         id: summarize-a-bounded-batch-of-queued-places
         run: |
+          if [ "$RESET_QUOTA_STATE" = "true" ]; then
+            python scripts/gemini_key_pool.py --reset-state "$GEMINI_KEY_POOL_STATE"
+          fi
           if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
             python scripts/batch_ai_summary_cron.py --limit 50
           else
             python scripts/batch_ai_summary_cron.py --limit "$BATCH_LIMIT"
           fi
+        env:
+          RESET_QUOTA_STATE: ${{ inputs.reset_quota_state && 'true' || 'false' }}
       - uses: actions/cache/save@v4
         id: step-8
         continue-on-error: true

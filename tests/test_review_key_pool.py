@@ -89,7 +89,7 @@ class PoolBatchOutcomeTests(unittest.TestCase):
              patch('batch_ai_summary_cron.persist') as persist,contextlib.redirect_stdout(io.StringIO()):
             counts=run(db,Mock(),model,'key',3,sleep=Mock())
         self.assertEqual(session.post.call_count,3)
-        self.assertEqual(counts['stop_reason'],'daily_quota_exceeded')
+        self.assertEqual(counts['stop_reason'],'key_pool_exhausted')
         self.assertTrue(counts['quota_stopped'])
         self.assertEqual(counts['errors'],0)
         persist.assert_not_called()
