@@ -238,7 +238,22 @@ def pending_places(db, limit):
     # committed leases, so transport errors must not blindly claim another batch.
     for attempt in range(4):
         try:
-            return db.rpc('claim_ai_review_work', {'batch_limit': limit}).execute().data or []
+            rows = db.rpc('claim_ai_review_work', {'batch_limit': limit}).execute().data or []
+            eligible = []
+            for place in rows:
+                if str(place.get('content_type_id')) == '38':
+                    # Shopping is outside review-analysis scope, including stale
+                    # jobs re-enqueued by older database maintenance functions.
+                    db.table('ai_review_jobs').update({
+                        'attempt_count': 2,
+                        'last_error_code': 'excluded_shopping_category',
+                        'lease_token': None, 'leased_until': None,
+                    }).eq('content_id', place['content_id']).eq(
+                        'lease_token', place['claim_token']).execute()
+                    finish_queue(db, place)
+                    continue
+                eligible.append(place)
+            return eligible
         except APIError as exc:
             if getattr(exc, 'code', None) not in ('57014', '40001', '40P01') or attempt == 3:
                 raise
