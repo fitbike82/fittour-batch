@@ -21,7 +21,9 @@ def evidence_catalog(reviews):
 def resolve_points(data, catalog, diagnostics):
     if not isinstance(data, dict):
         raise ValueError('Invalid response object')
-    for field in ('pros', 'cons'):
+    for field in ('pros', 'cons', 'detail_candidates'):
+        if field == 'detail_candidates' and field not in data:
+            continue
         if not isinstance(data.get(field), list):
             raise ValueError('Invalid ' + field)
         valid = []
@@ -51,7 +53,7 @@ def basic_summary(place, reason):
         f"장소명: {place.get('title') or '장소명 확인 필요'}",
         f"위치: {address}" if address else '위치 정보는 추가 확인이 필요합니다.',
         '신뢰할 수 있는 방문 후기 분석이 부족하여 기본 장소 정보만 제공합니다.'],
-        'pros': [], 'cons': [], 'visit_tips': '방문 전 운영시간과 시설 정보를 확인해 주세요.',
+        'pros': [], 'cons': [], 'visit_tips': '',
         'analysis_basis': 'basic_info', 'coverage_reason': reason,
         'analyzed_at': datetime.now(timezone.utc).isoformat()}
 

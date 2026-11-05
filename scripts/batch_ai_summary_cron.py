@@ -297,6 +297,12 @@ def finish_queue(db, place):
 
 
 def persist(db, place, summary, reviews, status, model, reason=None, diagnostics=None):
+    diagnostics = {**(diagnostics or {}), 'detail_enrichment': {
+        'policy_version': 1,
+        'status': 'candidate' if (summary or {}).get('detail_candidates') else 'none',
+        'candidates': (summary or {}).get('detail_candidates', []),
+        'input_modified_time': place.get('modified_time'),
+    }}
     if summary and 'category_l1' in summary:
         summary = {**summary, **validate_taxonomy(summary, place)}
     if place.get('claim_token'):
@@ -313,6 +319,7 @@ def persist(db, place, summary, reviews, status, model, reason=None, diagnostics
         'visit_tips': summary['visit_tips'] if summary else None,
         'source_reviews': {'input_modified_time': place.get('modified_time'), 'reason': reason,
             'analysis_basis': (summary or {}).get('analysis_basis', 'review_analysis'),
+            'diagnostics': diagnostics,
             'analyzed_at': datetime.now(timezone.utc).isoformat(),
             'reviews': [{k: r[k] for k in ('source_id', 'title', 'url', 'query', 'provider', 'kind', 'published_at', 'fetched_at') if k in r} for r in reviews]},
         'updated_at': datetime.now(timezone.utc).isoformat()}

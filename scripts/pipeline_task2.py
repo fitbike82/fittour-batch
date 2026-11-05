@@ -52,9 +52,23 @@ evidence(원문 그대로 인용 10~160자) 객체다. 실제 불편/제약/주�
 장점이나 단점이 없다는 이유로 요약을 거절하지 말고 해당 목록을 비운다.
 각 장단점은 제공된 evidence_id를 선택한다. 인용문을 새로 쓰거나 바꾸지 않는다.
 동명이거나 장소 자체를 확인할 근거가 부족할 때만 quality_status=insufficient_evidence로 응답한다.
-충분하면 quality_status=ready다. 과장과 반복을 피한다.'''
+충분하면 quality_status=ready다. 과장과 반복을 피한다.
+장소명, 주소, 지역, 지점을 먼저 대조한다. 다른 지점/지역의 리뷰와 지점을 특정할 수 없는
+리뷰는 요약과 인용 근거에서 제외한다. 대상 장소의 근거가 남지 않으면 insufficient_evidence다.
+리뷰 혼재, 데이터 부족, 정보 정확성 등 서비스의 데이터 문제를 요약/장단점/꿀팁에 쓰지 않는다.
+"일부 지점"의 교통/주차 사정을 대상 장소의 단점으로 일반화하지 않는다.
+위치/시설/주차 확인 권유, 공식 페이지 가격표 확인 등 일반 안내는 꿀팁이 아니다.
+꿀팁은 해당 장소 원문에 있는 구체적인 시간대, 동선, 예약 방법, 이용 요령만 쓴다.
+근거 있는 꿀팁이 없으면 visit_tips는 빈 문자열로 둔다.
+추가 상세 화면에 활용할 근거가 있으면 detail_candidates에 최대 5개를 별도 기록한다.
+각 항목은 topic(transport/parking/pricing/booking/facilities/accessibility/visit_route),
+text, evidence_id를 가진다. 대상 지점의 검증 가능한 근거만 사용한다. 없으면 빈 목록이다.'''
 POINT = {'type':'OBJECT','properties':{'text':{'type':'STRING'},'evidence_id':{'type':'STRING'}},'required':['text','evidence_id']}
 SCHEMA = {'type':'OBJECT','properties':{'summary_lines':{'type':'ARRAY','items':{'type':'STRING'},'minItems':3,'maxItems':3},'pros':{'type':'ARRAY','items':POINT},'cons':{'type':'ARRAY','items':POINT},'visit_tips':{'type':'STRING'},'quality_status':{'type':'STRING','enum':['ready','insufficient_evidence']}},'required':['summary_lines','pros','cons','visit_tips','quality_status']}
+SCHEMA['properties']['detail_candidates'] = {'type': 'ARRAY', 'maxItems': 5, 'items': {
+    'type': 'OBJECT', 'properties': {**POINT['properties'], 'topic': {'type': 'STRING',
+    'enum': ['transport', 'parking', 'pricing', 'booking', 'facilities', 'accessibility', 'visit_route']}},
+    'required': ['topic', 'text', 'evidence_id']}}
 
 def clean_html(value):
     return re.sub(r'\s+',' ',html.unescape(BeautifulSoup(value or '', 'html.parser').get_text(' '))).strip()
@@ -136,7 +150,9 @@ def validate_summary(data,reviews):
     lines=data.get('summary_lines')
     if not isinstance(lines,list) or len(lines)!=3 or any(not isinstance(s,str) or not s.strip() or '\n' in s for s in lines): raise ValueError('Invalid three-line summary')
     sources={r['source_id']:r['text'] for r in reviews}
-    for name,lower,upper in (('pros',0,3),('cons',0,5)):
+    for name,lower,upper in (('pros',0,3),('cons',0,5),('detail_candidates',0,5)):
+        if name == 'detail_candidates' and name not in data:
+            continue
         points=data.get(name)
         if not isinstance(points,list) or not lower<=len(points)<=upper: raise ValueError('Invalid '+name)
         for point in points:
@@ -151,7 +167,15 @@ def validate_summary(data,reviews):
                 if len(matches)!=1: raise ValueError('Ungrounded '+name)
                 point['source_id'],quote=matches[0]
             point['evidence']=quote
-    if not isinstance(data.get('visit_tips'),str) or not data['visit_tips'].strip() or '\n' in data['visit_tips']: raise ValueError('Invalid tip')
+    if not isinstance(data.get('visit_tips'),str) or '\n' in data['visit_tips']: raise ValueError('Invalid tip')
+    public_text = ' '.join(lines + [p['text'] for key in ('pros', 'cons') for p in data[key]] + [data['visit_tips']])
+    compact = re.sub(r'\s+', '', public_text)
+    forbidden = (r'(다른|타|여러)지점.*(혼재|섞|혼선)', r'일부지점',
+                 r'(정확한위치|시설정보|주차환경).*(확인|권장)',
+                 r'공식(페이지|홈페이지|사이트).*(가격표|요금).*(확인)',
+                 r'(리뷰|후기|데이터|정보).*(부족|혼재|혼선|섞여)')
+    if any(re.search(pattern, compact) for pattern in forbidden):
+        raise ValueError('Invalid service-data commentary or generic tip')
     return data
 
 class GeminiRequestFailed(RuntimeError):
