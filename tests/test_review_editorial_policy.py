@@ -37,3 +37,8 @@ class EditorialPolicyTests(unittest.TestCase):
         data['detail_candidates'][0]['evidence'] = '실제 원문에는 존재하지 않는 상세 정보입니다.'
         with self.assertRaises(ValueError):
             validate_summary(data, [{'source_id': 1, 'text': quote}])
+
+    def test_separate_fields_do_not_form_a_forbidden_sentence(self):
+        data = self.candidate()
+        data['summary_lines'] = ['시설 정보를 소개합니다.', '주차 공간이 부족합니다.', '관람 동선을 소개합니다.']
+        self.assertEqual(validate_summary(data, []), data)

@@ -92,4 +92,8 @@ class EvidenceRefreshTests(unittest.TestCase):
         data = basic_summary({'title': '공원'}, 'no_reviews')
         self.assertIn('analyzed_at', data)
         self.assertIn('기본 장소 정보', data['summary_lines'][2])
+        self.assertNotIn('부족', data['summary_lines'][2])
+        self.assertEqual(data['analysis_basis'], 'basic_info')
+        self.assertEqual(data['coverage_reason'], 'no_reviews')
+        self.assertEqual(data['visit_tips'], '')
         validate_summary(data, [])

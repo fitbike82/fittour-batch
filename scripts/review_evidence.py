@@ -52,7 +52,7 @@ def basic_summary(place, reason):
     return {'quality_status': 'ready', 'summary_lines': [
         f"장소명: {place.get('title') or '장소명 확인 필요'}",
         f"위치: {address}" if address else '위치 정보는 추가 확인이 필요합니다.',
-        '신뢰할 수 있는 방문 후기 분석이 부족하여 기본 장소 정보만 제공합니다.'],
+        '기본 장소 정보를 제공합니다.'],
         'pros': [], 'cons': [], 'visit_tips': '',
         'analysis_basis': 'basic_info', 'coverage_reason': reason,
         'analyzed_at': datetime.now(timezone.utc).isoformat()}

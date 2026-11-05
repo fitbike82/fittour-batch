@@ -168,13 +168,13 @@ def validate_summary(data,reviews):
                 point['source_id'],quote=matches[0]
             point['evidence']=quote
     if not isinstance(data.get('visit_tips'),str) or '\n' in data['visit_tips']: raise ValueError('Invalid tip')
-    public_text = ' '.join(lines + [p['text'] for key in ('pros', 'cons') for p in data[key]] + [data['visit_tips']])
-    compact = re.sub(r'\s+', '', public_text)
+    public_texts = lines + [p['text'] for key in ('pros', 'cons') for p in data[key]] + [data['visit_tips']]
     forbidden = (r'(다른|타|여러)지점.*(혼재|섞|혼선)', r'일부지점',
                  r'(정확한위치|시설정보|주차환경).*(확인|권장)',
                  r'공식(페이지|홈페이지|사이트).*(가격표|요금).*(확인)',
                  r'(리뷰|후기|데이터|정보).*(부족|혼재|혼선|섞여)')
-    if any(re.search(pattern, compact) for pattern in forbidden):
+    if any(re.search(pattern, re.sub(r'\s+', '', text))
+           for text in public_texts for pattern in forbidden):
         raise ValueError('Invalid service-data commentary or generic tip')
     return data
 
