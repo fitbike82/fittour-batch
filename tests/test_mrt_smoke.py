@@ -83,13 +83,27 @@ class SmokeTests(unittest.TestCase):
                                              headers={'Authorization': 'Bearer secret-test-value'})
         opener = Mock()
         opener.open.side_effect = urllib.error.HTTPError(request.full_url, 403, 'secret-test-value',
-                                                        {'Server': 'cloudflare', 'CF-Mitigated': 'challenge'}, None)
+                                                        {'Server': 'cloudflare', 'CF-Mitigated': 'challenge',
+                                                         'Content-Type': 'text/html; charset=UTF-8',
+                                                         'CF-Ray': '0123456789abcdef-ICN',
+                                                         'Set-Cookie': 'secret-test-value'},
+                                                        io.BytesIO(b'<h1>Cloudflare Error code: 1020</h1>secret-test-value'))
         with patch.object(smoke.urllib.request, 'build_opener', return_value=opener):
-            with self.assertRaises(urllib.error.HTTPError):
+            with self.assertRaises(urllib.error.HTTPError) as caught:
                 smoke.observed_open(request, 25)
+        self.assertIn(b'secret-test-value', caught.exception.read())
         opener.open.assert_called_once()
         self.assertIn('HTTP 403; Cloudflare edge=yes; challenge=yes', self.output.getvalue())
         self.assertNotIn('secret-test-value', self.output.getvalue())
+        self.assertIn('Content-Type=text/html; CF-Ray=0123456789abcdef-ICN; Cloudflare error code=1020', self.output.getvalue())
+        self.assertRegex(self.output.getvalue(), r'UTC request=\d{4}-\d\d-\d\dT.*\+00:00; path=/v1/products/tna/search')
+
+    def test_metadata_rejects_unexpected_header_values(self):
+        smoke.report_http('search', 403, {'Content-Type': 'secret-test-value', 'CF-Ray': 'secret-test-value'},
+                          '/v1/products/tna/search', '2026-11-06T00:00:00+00:00')
+        self.assertNotIn('secret-test-value', self.output.getvalue())
+        self.assertIn('Cloudflare error code=unknown', self.output.getvalue())
+        self.assertIsNone(smoke.cloudflare_code(b'Error code: 1020', {}))
 
     def test_cloudflare_body_detection_does_not_log_body(self):
         with self.assertRaises(RuntimeError):

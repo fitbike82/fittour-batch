@@ -4,7 +4,11 @@ import re
 import sys
 import tempfile
 import json
+import datetime as dt
+import html
+import io
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from unittest.mock import patch
@@ -20,11 +24,29 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def report_http(stage, status, headers):
+def cloudflare_code(raw, headers):
+    text = raw.decode('utf-8', 'replace')
+    if 'cloudflare' not in headers.get('Server', '').lower() and 'cloudflare' not in text.lower():
+        return None
+    plain = html.unescape(re.sub(r'<[^>]+>', ' ', text))
+    match = re.search(r'\berror(?:\s+code)?\s*[:#]?\s*(1\d{3})\b', plain, re.I)
+    return match.group(1) if match else None
+
+
+def report_http(stage, status, headers, path, requested_at, code=None):
     edge = 'cloudflare' in headers.get('Server', '').lower() or bool(headers.get('CF-Ray'))
     challenge = headers.get('CF-Mitigated', '').lower() == 'challenge'
     print(f'{stage}: HTTP {status}; Cloudflare edge={"yes" if edge else "no evidence"}; '
           f'challenge={"yes" if challenge else "no header evidence"}')
+    # Log only validated metadata. Never echo arbitrary header/body strings.
+    content_type = headers.get('Content-Type', '').split(';', 1)[0].strip().lower()
+    if not re.fullmatch(r'[a-z0-9!#$&^_.+-]+/[a-z0-9!#$&^_.+-]+', content_type):
+        content_type = 'unknown'
+    ray = headers.get('CF-Ray', '')
+    if not re.fullmatch(r'[0-9a-fA-F]{16,32}(?:-[A-Za-z]{3})?', ray):
+        ray = 'unknown'
+    print(f'UTC request={requested_at}; path={path}; Content-Type={content_type}; '
+          f'CF-Ray={ray}; Cloudflare error code={code or "unknown"}')
 
 
 def observed_open(req, timeout):
@@ -35,12 +57,18 @@ def observed_open(req, timeout):
         stage = 'MCP ' + message['method']
         if message['method'] == 'tools/call':
             stage = 'MCP detail'
+    requested_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    path = urllib.parse.urlsplit(req.full_url).path
+    if path not in (*api.ENDPOINTS.values(), '/mcp'):
+        raise ValueError('Unexpected diagnostic path')
     try:
         result = urllib.request.build_opener(NoRedirect()).open(req, timeout=timeout)
     except urllib.error.HTTPError as exc:
-        report_http(stage, exc.code, exc.headers)
-        raise
-    report_http(stage, result.status, result.headers)
+        raw = exc.read()
+        report_http(stage, exc.code, exc.headers, path, requested_at, cloudflare_code(raw, exc.headers))
+        # Keep the original client error handling/body parsing intact.
+        raise urllib.error.HTTPError(exc.url, exc.code, exc.reason, exc.headers, io.BytesIO(raw)) from None
+    report_http(stage, result.status, result.headers, path, requested_at)
     return result
 
 
