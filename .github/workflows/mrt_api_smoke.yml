@@ -1,0 +1,24 @@
+name: MRT API manual smoke check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mrt-api-smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Offline MRT regression tests
+        run: python -m unittest discover -s tests -p 'test_mrt_*.py' -q
+      - name: Check MRT API (search 1, MyLink <=1, MCP detail <=1)
+        env:
+          MRT_API_KEY: ${{ secrets.MRT_API_KEY }}
+          PYTHONDONTWRITEBYTECODE: '1'
+        run: python scripts/mrt_api_smoke.py

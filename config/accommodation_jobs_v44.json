@@ -1,0 +1,6 @@
+{
+  "jobs": [
+    {"keyword":"제주 호텔","checkin":"2026-12-10","checkout":"2026-12-11","adults":2},
+    {"keyword":"제주 리조트","checkin":"2026-12-10","checkout":"2026-12-11","adults":2}
+  ]
+}

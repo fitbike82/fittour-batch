@@ -1,0 +1,8 @@
+{
+  "jobs": [
+    {"type": "tna", "city": "서울", "keyword": "입장권"},
+    {"type": "tna", "city": "제주", "keyword": "입장권"},
+    {"type": "tna", "city": "부산", "keyword": "요트"},
+    {"type": "accommodation", "keyword": "제주 호텔", "checkin": "2026-12-10", "checkout": "2026-12-11", "adults": 2}
+  ]
+}
