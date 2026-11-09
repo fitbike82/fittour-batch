@@ -23,6 +23,24 @@ begin
   return new;
 end;
 $$;
+
+-- Legacy fallbacks repeated the place title/address without review evidence.
+-- They are not AI review content and must not be exposed as ready summaries.
+update public.place_ai_summaries
+set quality_status = 'insufficient',
+    honest_summary = null,
+    pros = '[]'::jsonb,
+    cons = '[]'::jsonb,
+    visit_tips = null,
+    model = null,
+    source_reviews = coalesce(source_reviews, '{}'::jsonb)
+      || jsonb_build_object(
+           'reason', coalesce(source_reviews->>'reason', 'insufficient_evidence'),
+           'analysis_basis', 'review_analysis',
+           'hidden_reason', 'no_review_evidence'
+         ),
+    updated_at = now()
+where coalesce(source_reviews->>'analysis_basis', '') = 'basic_info';
 drop trigger if exists archive_ai_review_summary on public.place_ai_summaries;
 create trigger archive_ai_review_summary before update on public.place_ai_summaries
 for each row execute function public.archive_ai_review_summary();

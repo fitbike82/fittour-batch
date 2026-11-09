@@ -2,7 +2,7 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 from pipeline_task2 import Gemini, validate_summary
-from scripts.review_evidence import evidence_catalog, basic_summary, quote_diagnostics
+from scripts.review_evidence import evidence_catalog, quote_diagnostics
 from batch_ai_summary_cron import run
 
 
@@ -72,7 +72,7 @@ class EvidenceRefreshTests(unittest.TestCase):
         codes=[item['code'] for item in quote_diagnostics(data,self.reviews())]
         self.assertEqual(codes, ['short_quote','missing_quote','quote_not_found'])
 
-    def test_no_review_evidence_is_labeled_basic_info_not_fake_review(self):
+    def test_no_review_evidence_is_excluded_instead_of_repeating_place_info(self):
         db, generator, session = Mock(), Mock(), Mock()
         generator.summarize.side_effect = ValueError('No unsponsored readable reviews')
         place = {'content_id': '1', 'title': '공원', 'address': '서울 중구'}
@@ -81,19 +81,9 @@ class EvidenceRefreshTests(unittest.TestCase):
              patch('batch_ai_summary_cron.search_reviews', return_value=[]), \
              patch('batch_ai_summary_cron.persist', return_value=True) as save:
             counts = run(db, session, generator, 'key', 1, sleep=Mock())
-        self.assertEqual(counts['basic_info'], 1)
-        self.assertEqual(counts['excluded'], 0)
-        summary = save.call_args.args[2]
-        self.assertEqual(summary['analysis_basis'], 'basic_info')
-        self.assertEqual(summary['pros'], [])
+        self.assertEqual(counts['basic_info'], 0)
+        self.assertEqual(counts['excluded'], 1)
+        self.assertIsNone(save.call_args.args[2])
+        self.assertEqual(save.call_args.args[4], 'insufficient')
         self.assertIsNone(save.call_args.args[5])
-
-    def test_basic_info_includes_analysis_time_and_source_limitation(self):
-        data = basic_summary({'title': '공원'}, 'no_reviews')
-        self.assertIn('analyzed_at', data)
-        self.assertIn('기본 장소 정보', data['summary_lines'][2])
-        self.assertNotIn('부족', data['summary_lines'][2])
-        self.assertEqual(data['analysis_basis'], 'basic_info')
-        self.assertEqual(data['coverage_reason'], 'no_reviews')
-        self.assertEqual(data['visit_tips'], '')
-        validate_summary(data, [])
+        self.assertEqual(save.call_args.args[6], 'No unsponsored readable reviews')

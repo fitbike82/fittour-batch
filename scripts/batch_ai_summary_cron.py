@@ -24,10 +24,6 @@ from requests.adapters import HTTPAdapter
 from supabase import create_client, ClientOptions
 from postgrest.exceptions import APIError
 try:
-    from review_evidence import basic_summary
-except ModuleNotFoundError:
-    from scripts.review_evidence import basic_summary
-try:
     from place_taxonomy import validate_taxonomy
 except ModuleNotFoundError:
     from scripts.place_taxonomy import validate_taxonomy
@@ -450,10 +446,12 @@ def run(db, session, generator, kakao_key, limit, sleep=time.sleep, clock=time.m
                         if not reason.startswith(EXCLUDED_REASONS):
                             raise
                         actual_model = getattr(generator, 'last_model', None)
-                        if reason in ('No unsponsored readable reviews', 'insufficient_evidence'):
-                            summary, model, status = basic_summary(place, reason), None, 'ready'
-                        else:
-                            summary, model, status = None, actual_model if isinstance(actual_model,str) else MODEL, 'insufficient'
+                        # A review section without review evidence is worse than no
+                        # review section: it merely repeats the place title/address.
+                        # Persist an exclusion marker so clients do not render it.
+                        summary, model, status = (None,
+                            actual_model if isinstance(actual_model, str) else None,
+                            'insufficient')
                     session.review_diagnostics['analysis_basis'] = (summary or {}).get('analysis_basis', 'review_analysis')
                     session.review_diagnostics['checked_at'] = datetime.now(timezone.utc).isoformat()
                     validation = getattr(generator, 'validation_events', [])
@@ -605,7 +603,7 @@ def main():
                    f"처리 회차: {counts['pass_number'] or '-'} / 선정: {counts['selected']}\n"
                    f"검토 시작: {counts['places_started']} / 총 처리: {counts['processed'] + counts['errors']} / 성공: {counts['success']} / 제외: {counts['excluded']}\n"
                    f"오류: {counts['errors']} / 미완료·이월: {counts['deferred']} / 소요: {counts['elapsed_seconds']}초\n"
-                   f"후기 분석: {counts['review_analysis']} / 기본 안내(후기 근거 부족): {counts['basic_info']}\n"
+                   f"후기 분석: {counts['review_analysis']} / 후기 근거 부족으로 미노출: {counts['excluded']}\n"
                    f"한도 이월(시도 차감 없음): {counts['quota_deferred']} / 429 응답: {counts.get('quota_429_total',0)}회\n"
                    f"중단 사유: {counts.get('stop_reason','선정 대상 처리 완료')}\n"
                    '1차 제외·오류는 전체 1차 종료 후 1회 재시도, 2차 실패는 점검 대상으로 보존합니다.')
