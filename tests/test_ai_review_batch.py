@@ -92,8 +92,11 @@ class BatchReviewTests(unittest.TestCase):
              patch('batch_ai_summary_cron.search_reviews', return_value=[]), \
              patch('batch_ai_summary_cron.persist', return_value=True) as save:
             counts = run(db, Mock(), generator, 'key', 2, sleep=sleep)
-        self.assertEqual((counts['processed'], counts['basic_info'], counts['errors']), (1, 1, 1))
+        self.assertEqual((counts['processed'], counts['excluded'], counts['errors']), (1, 1, 1))
+        self.assertEqual(counts['basic_info'], 0)
         self.assertEqual(save.call_count, 1)
+        self.assertIsNone(save.call_args.args[2])
+        self.assertEqual(save.call_args.args[4], 'insufficient')
         self.assertEqual([c.args[0] for c in sleep.call_args_list], [5, 5])
 
     def test_throttling_applies_to_fallback_and_retries(self):

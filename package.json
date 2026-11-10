@@ -20,10 +20,12 @@
     "century:ai:batch": "python scripts/century_ai_matching.py --limit 50",
     "sync:daily-tour": "tsx scripts/daily-tour-pipeline.ts --limit 10000",
     "batch:report": "tsx scripts/report-tour-batch.ts",
-    "collect:review-sources": "tsx scripts/collect-local-review-sources.ts"
+    "collect:review-sources": "tsx scripts/collect-local-review-sources.ts",
+    "scrape:review-bodies": "tsx scripts/scrape-local-review-bodies.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.118.0",
+    "cheerio": "1.2.0",
     "dotenv": "17.2.3",
     "p-limit": "7.3.3"
   },
