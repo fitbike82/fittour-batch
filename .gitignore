@@ -13,6 +13,10 @@ env/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+cache/
+.cache/
+temp/
+tmp/
 *.egg-info/
 build/
 dist/
@@ -30,6 +34,7 @@ logs/
 htmlcov/
 .DS_Store
 Thumbs.db
+data/raw_sources/
 
 # Source reference material is retained locally, not published in this extraction.
 sql/
@@ -66,3 +71,5 @@ supabase/migrations/*
 !docs/unmatched_century_stores.json
 !docs/century-ai-checkpoint.json
 !docs/ai-review-recovery-2026-11-03.md
+!docs/project-audit.md
+!docs/artifacts-inventory.md

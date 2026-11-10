@@ -19,7 +19,8 @@
     "century:ai:prepare": "python scripts/century_ai_matching.py --prepare",
     "century:ai:batch": "python scripts/century_ai_matching.py --limit 50",
     "sync:daily-tour": "tsx scripts/daily-tour-pipeline.ts --limit 10000",
-    "batch:report": "tsx scripts/report-tour-batch.ts"
+    "batch:report": "tsx scripts/report-tour-batch.ts",
+    "collect:review-sources": "tsx scripts/collect-local-review-sources.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.118.0",
